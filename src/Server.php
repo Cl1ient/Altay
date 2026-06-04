@@ -106,6 +106,7 @@ use pocketmine\thread\ThreadCrashException;
 use pocketmine\thread\ThreadSafeClassLoader;
 use pocketmine\timings\Timings;
 use pocketmine\timings\TimingsHandler;
+use pocketmine\timings\TimingsTimelineRegistry;
 use pocketmine\utils\AssumptionFailedError;
 use pocketmine\utils\Binary;
 use pocketmine\utils\BroadcastLoggerForwarder;
@@ -903,6 +904,7 @@ class Server {
 			}
 
 			TimingsHandler::setEnabled($this->configGroup->getPropertyBool(Yml::SETTINGS_ENABLE_PROFILING, false));
+			TimingsHandler::setTimelineEnabled($this->configGroup->getPropertyBool(Yml::SETTINGS_ENABLE_TIMELINE_PROFILING, false));
 			$this->profilingTickRate = $this->configGroup->getPropertyInt(Yml::SETTINGS_PROFILE_REPORT_TRIGGER, self::TARGET_TICKS_PER_SECOND);
 
 			$this->asyncPool = new AsyncPool($poolSize, max(-1, $this->configGroup->getPropertyInt(Yml::MEMORY_ASYNC_WORKER_HARD_LIMIT, 256)), $this->autoloader, $this->logger, $this->tickSleeper);
@@ -2105,6 +2107,8 @@ class Server {
 			return;
 		}
 
+		TimingsTimelineRegistry::endTick();
+		TimingsTimelineRegistry::newTick($this->tickCounter + 1, null);
 		Timings::$serverTick->startTiming();
 
 		++$this->tickCounter;
@@ -2172,6 +2176,7 @@ class Server {
 		$this->currentUse = min(1, $totalTickTimeSeconds / self::TARGET_SECONDS_PER_TICK);
 
 		TimingsHandler::tick($this->currentTPS <= $this->profilingTickRate);
+		TimingsTimelineRegistry::endTick();
 
 		$idx = $this->tickCounter % self::TARGET_TICKS_PER_SECOND;
 		$this->tickAverage[$idx] = $this->currentTPS;
@@ -2183,5 +2188,7 @@ class Server {
 		}else{
 			$this->nextTick += self::TARGET_SECONDS_PER_TICK;
 		}
+
+		TimingsTimelineRegistry::newTick($this->tickCounter + 1, $this->tickCounter);
 	}
 }
