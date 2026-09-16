@@ -1425,7 +1425,15 @@ class Server {
 			if($useRakNet){
 				$transport = new ThreadedTransport(
 					$this->logger,
-					new RakNetTransportFactory($ip, $port, $ipV6, $this->configGroup->getPropertyInt(Yml::NETWORK_MAX_MTU_SIZE, 1492), mt_rand(0, PHP_INT_MAX)),
+					new RakNetTransportFactory(
+						$ip,
+						$port,
+						$ipV6,
+						$this->configGroup->getPropertyInt(Yml::NETWORK_MAX_MTU_SIZE, 1492),
+						mt_rand(0, PHP_INT_MAX),
+						max(1, $this->configGroup->getPropertyInt(Yml::NETWORK_MAX_SPLIT_PACKET_PARTS, 192)),
+						max(1, $this->configGroup->getPropertyInt(Yml::NETWORK_MAX_CONCURRENT_SPLIT_PACKETS, 4))
+					),
 					$this->tickSleeper
 				);
 				$rakNetRegistered = $this->network->registerInterface(new TransportNetworkInterface($this, $transport, $packetBroadcaster, $entityEventBroadcaster, $typeConverter));
