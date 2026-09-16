@@ -68,6 +68,7 @@ class EntityDamageEvent extends EntityEvent implements Cancellable{
 	public const CAUSE_CUSTOM = 14;
 	public const CAUSE_STARVATION = 15;
 	public const CAUSE_FALLING_BLOCK = 16;
+	public const CAUSE_FREEZING = 17;
 
 	private float $baseDamage;
 	private float $originalBase;
@@ -164,6 +165,7 @@ class EntityDamageEvent extends EntityEvent implements Cancellable{
 			case self::CAUSE_VOID:
 			case self::CAUSE_MAGIC:
 			case self::CAUSE_SUICIDE:
+			case self::CAUSE_FREEZING:
 				return false;
 
 		}

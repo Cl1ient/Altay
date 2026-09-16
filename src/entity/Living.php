@@ -50,6 +50,7 @@ use pocketmine\item\enchantment\Enchantment;
 use pocketmine\item\enchantment\VanillaEnchantments;
 use pocketmine\item\Item;
 use pocketmine\item\Mace;
+use pocketmine\item\VanillaArmorMaterials;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Vector3;
 use pocketmine\math\VoxelRayTrace;
@@ -78,6 +79,7 @@ use function atan2;
 use function ceil;
 use function count;
 use function floor;
+use function intdiv;
 use function ksort;
 use function max;
 use function min;
@@ -131,6 +133,13 @@ abstract class Living extends Entity{
 	protected Attribute $absorptionAttr;
 	protected Attribute $knockbackResistanceAttr;
 	protected Attribute $moveSpeedAttr;
+
+	private const FREEZE_DAMAGE_INTERVAL_TICKS = 40;
+	private const FREEZE_MOVEMENT_PENALTY = -0.05;
+
+	protected ?bool $freezeProgressState = false;
+	protected int $freezeProgressTicks = 0;
+	protected float $freezeMovementAdd = 0.0;
 
 	protected bool $sprinting = false;
 	protected bool $sneaking = false;
@@ -465,6 +474,117 @@ abstract class Living extends Entity{
 	}
 
 	/**
+	 * Returns the number of ticks this entity has accumulated toward being frozen.
+	 */
+	public function getFreezeProgressTicks() : int{
+		return $this->freezeProgressTicks;
+	}
+
+	public function setFreezeProgressTicks(int $freezeProgressTicks) : void{
+		if($freezeProgressTicks < 0){
+			throw new \InvalidArgumentException("Freeze ticks cannot be negative");
+		}
+		$this->freezeProgressTicks = $freezeProgressTicks;
+		$this->networkPropertiesDirty = true;
+	}
+
+	/**
+	 * Returns freeze progress as a normalized value between 0.0 and 1.0.
+	 * This is the value sent to clients to control the freezing visual effect.
+	 */
+	public function getFreezeProgressRatio() : float{
+		return min(1.0, $this->freezeProgressTicks / max(1, $this->getFreezeThresholdTicks()));
+	}
+
+	/**
+	 * Returns the number of ticks required for this entity to be considered fully frozen.
+	 */
+	public function getFreezeThresholdTicks() : int{
+		return 140;
+	}
+
+	public function getFreezeProgressState() : ?bool{
+		return $this->freezeProgressState;
+	}
+
+	/**
+	 * Sets the freeze progress state. Use null to indicate the freeze state is locked and should not progress in either
+	 * direction.
+	 */
+	public function setFreezeProgressState(?bool $state) : void{
+		$this->freezeProgressState = $state;
+	}
+
+	/**
+	 * Whether this entity can be frozen (i.e. accumulate freeze progress from environments such as powder snow).
+	 */
+	public function canFreeze() : bool{
+		foreach($this->armorInventory->getContents() as $item){
+			if($item instanceof Armor && $item->getMaterial() === VanillaArmorMaterials::LEATHER()){
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public function canWalkOnPowderSnow() : bool{
+		$boots = $this->armorInventory->getBoots();
+		return $boots instanceof Armor && $boots->getMaterial() === VanillaArmorMaterials::LEATHER();
+	}
+
+	protected function getEntitySpecificCollisionBoxes(AxisAlignedBB $bb) : array{
+		if($this->sneaking || !$this->canWalkOnPowderSnow()){
+			return parent::getEntitySpecificCollisionBoxes($bb);
+		}
+
+		//leather boots let the entity stand on top of the block, so the reduced fall collision must not be used here
+		return $this->getPowderSnowCollisionBoxes($bb, min((int) floor($bb->maxY), (int) floor($this->boundingBox->minY - 1)), 1.0);
+	}
+
+	protected function updateFreezeState(int $tickDiff) : bool{
+		$threshold = $this->getFreezeThresholdTicks();
+		if($this->freezeProgressState === true){
+			$previousTicks = $this->freezeProgressTicks;
+			$this->setFreezeProgressTicks($previousTicks + $tickDiff);
+			if($this->freezeProgressTicks >= $threshold){
+				//damage is dealt whenever a damage interval boundary is crossed, otherwise a large tickDiff could skip one
+				$lastDamageTicks = max($previousTicks, $threshold - 1);
+				if(intdiv($this->freezeProgressTicks, self::FREEZE_DAMAGE_INTERVAL_TICKS) > intdiv($lastDamageTicks, self::FREEZE_DAMAGE_INTERVAL_TICKS)){
+					$this->applyFreezeDamage();
+				}
+			}
+			$this->updateFreezeMovementModifier();
+			return true;
+		}
+
+		if($this->freezeProgressState === false && $this->freezeProgressTicks > 0){
+			$this->setFreezeProgressTicks(max(0, min($this->freezeProgressTicks, $threshold) - 2 * $tickDiff));
+			$this->updateFreezeMovementModifier();
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Applies the movement speed penalty matching the current freeze progress, removing the previously applied one.
+	 */
+	private function updateFreezeMovementModifier() : void{
+		$modifier = self::FREEZE_MOVEMENT_PENALTY * $this->getFreezeProgressRatio();
+		if($modifier === $this->freezeMovementAdd){
+			return;
+		}
+
+		$this->setMovementSpeed($this->getMovementSpeed() - $this->freezeMovementAdd + $modifier, true);
+		$this->freezeMovementAdd = $modifier;
+	}
+
+	protected function applyFreezeDamage() : void{
+		$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_FREEZING, 1);
+		$this->attack($ev);
+	}
+
+	/**
 	 * Called prior to EntityDamageEvent execution to apply modifications to the event's damage, such as reduction due
 	 * to effects or armour.
 	 */
@@ -720,6 +840,13 @@ abstract class Living extends Entity{
 						$this->armorInventory->setItem($index, $item);
 					}
 				}
+			}
+
+			if($this->updateFreezeState($tickDiff)){
+				$hasUpdate = true;
+			}
+			if($this->freezeProgressState !== null){
+				$this->freezeProgressState = false;
 			}
 		}
 
@@ -1008,6 +1135,8 @@ abstract class Living extends Entity{
 
 		$properties->setShort(EntityMetadataProperties::AIR, $this->breathTicks);
 		$properties->setShort(EntityMetadataProperties::MAX_AIR, $this->maxBreathTicks);
+
+		$properties->setFloat(EntityMetadataProperties::FREEZING_EFFECT_STRENGTH, $this->getFreezeProgressRatio());
 
 		$properties->setGenericFlag(EntityMetadataFlags::BREATHING, $this->breathing);
 		$properties->setGenericFlag(EntityMetadataFlags::SNEAKING, $this->sneaking);
