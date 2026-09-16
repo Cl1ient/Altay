@@ -36,6 +36,7 @@ use pocketmine\block\utils\LeverFacing;
 use pocketmine\block\utils\MobHeadType;
 use pocketmine\block\utils\MushroomBlockType;
 use pocketmine\block\utils\SeagrassType;
+use pocketmine\block\utils\StairShape;
 use pocketmine\data\bedrock\block\BlockLegacyMetadata as LegacyMeta;
 use pocketmine\data\bedrock\block\BlockStateStringValues as StringValues;
 use pocketmine\data\bedrock\block\BlockTypeNames as Ids;
@@ -67,6 +68,8 @@ final class ValueMappings{
 	public readonly EnumFromRawStateMap $dripstoneThickness;
 	/** @phpstan-var EnumFromRawStateMap<LeverFacing, string> */
 	public readonly EnumFromRawStateMap $leverFacing;
+	/** @phpstan-var EnumFromRawStateMap<StairShape, string> */
+	public readonly EnumFromRawStateMap $stairShape;
 
 	/** @phpstan-var EnumFromRawStateMap<MushroomBlockType, int> */
 	public readonly EnumFromRawStateMap $mushroomBlockType;
@@ -187,6 +190,13 @@ final class ValueMappings{
 			LeverFacing::SOUTH => StringValues::LEVER_DIRECTION_SOUTH,
 			LeverFacing::WEST => StringValues::LEVER_DIRECTION_WEST,
 			LeverFacing::EAST => StringValues::LEVER_DIRECTION_EAST
+		});
+		$this->stairShape = EnumFromRawStateMap::string(StairShape::class, fn(StairShape $case) => match ($case) {
+			StairShape::STRAIGHT => StringValues::MC_CORNER_NONE,
+			StairShape::INNER_LEFT => StringValues::MC_CORNER_INNER_LEFT,
+			StairShape::INNER_RIGHT => StringValues::MC_CORNER_INNER_RIGHT,
+			StairShape::OUTER_LEFT => StringValues::MC_CORNER_OUTER_LEFT,
+			StairShape::OUTER_RIGHT => StringValues::MC_CORNER_OUTER_RIGHT,
 		});
 
 		$this->mushroomBlockType = EnumFromRawStateMap::int(

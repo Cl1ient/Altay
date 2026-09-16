@@ -904,8 +904,34 @@ final class BlockTypeIds{
 	public const TALL_DRY_GRASS = 10871;
 	public const DRIED_GHAST = 10872;
 	public const POWDER_SNOW = 10873;
+	public const WOOL_SLAB = 10874;
+	public const WOOL_STAIRS = 10875;
+	public const CONCRETE_SLAB = 10876;
+	public const CONCRETE_STAIRS = 10877;
+	public const RED_SHRUB = 10878;
+	public const SHELF_MUSHROOM = 10879;
+	public const STRAW_BED = 10880;
+	public const POPLAR_BUTTON = 10881;
+	public const POPLAR_CEILING_CENTER_HANGING_SIGN = 10882;
+	public const POPLAR_CEILING_EDGES_HANGING_SIGN = 10883;
+	public const POPLAR_DOOR = 10884;
+	public const POPLAR_FENCE = 10885;
+	public const POPLAR_FENCE_GATE = 10886;
+	public const POPLAR_LOG = 10887;
+	public const POPLAR_PLANKS = 10888;
+	public const POPLAR_PRESSURE_PLATE = 10889;
+	public const POPLAR_SIGN = 10890;
+	public const POPLAR_SLAB = 10891;
+	public const POPLAR_STAIRS = 10892;
+	public const POPLAR_TRAPDOOR = 10893;
+	public const POPLAR_WALL_HANGING_SIGN = 10894;
+	public const POPLAR_WALL_SIGN = 10895;
+	public const POPLAR_WOOD = 10896;
+	public const ORANGE_POPLAR_LEAVES = 10897;
+	public const RED_POPLAR_LEAVES = 10898;
+	public const YELLOW_POPLAR_LEAVES = 10899;
 
-	public const FIRST_UNUSED_BLOCK_ID = 10874;
+	public const FIRST_UNUSED_BLOCK_ID = 10900;
 
 	private static int $nextDynamicId = self::FIRST_UNUSED_BLOCK_ID;
 

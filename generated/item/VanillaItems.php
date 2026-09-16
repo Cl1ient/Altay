@@ -152,6 +152,7 @@ final class VanillaItems{
 	private static BannerPattern $_mCREEPER_BANNER_PATTERN;
 	private static HangingSign $_mCRIMSON_HANGING_SIGN;
 	private static ItemBlockWallOrFloor $_mCRIMSON_SIGN;
+	private static Cushion $_mCUSHION;
 	private static Boat $_mDARK_OAK_BOAT;
 	private static HangingSign $_mDARK_OAK_HANGING_SIGN;
 	private static ItemBlockWallOrFloor $_mDARK_OAK_SIGN;
@@ -288,6 +289,9 @@ final class VanillaItems{
 	private static BannerPattern $_mPIGLIN_BANNER_PATTERN;
 	private static PitcherPod $_mPITCHER_POD;
 	private static PoisonousPotato $_mPOISONOUS_POTATO;
+	private static Boat $_mPOPLAR_BOAT;
+	private static HangingSign $_mPOPLAR_HANGING_SIGN;
+	private static ItemBlockWallOrFloor $_mPOPLAR_SIGN;
 	private static Item $_mPOPPED_CHORUS_FRUIT;
 	private static Potato $_mPOTATO;
 	private static Potion $_mPOTION;
@@ -542,6 +546,7 @@ final class VanillaItems{
 			"creeper_banner_pattern" => fn(BannerPattern $v) => self::$_mCREEPER_BANNER_PATTERN = $v,
 			"crimson_hanging_sign" => fn(HangingSign $v) => self::$_mCRIMSON_HANGING_SIGN = $v,
 			"crimson_sign" => fn(ItemBlockWallOrFloor $v) => self::$_mCRIMSON_SIGN = $v,
+			"cushion" => fn(Cushion $v) => self::$_mCUSHION = $v,
 			"dark_oak_boat" => fn(Boat $v) => self::$_mDARK_OAK_BOAT = $v,
 			"dark_oak_hanging_sign" => fn(HangingSign $v) => self::$_mDARK_OAK_HANGING_SIGN = $v,
 			"dark_oak_sign" => fn(ItemBlockWallOrFloor $v) => self::$_mDARK_OAK_SIGN = $v,
@@ -678,6 +683,9 @@ final class VanillaItems{
 			"piglin_banner_pattern" => fn(BannerPattern $v) => self::$_mPIGLIN_BANNER_PATTERN = $v,
 			"pitcher_pod" => fn(PitcherPod $v) => self::$_mPITCHER_POD = $v,
 			"poisonous_potato" => fn(PoisonousPotato $v) => self::$_mPOISONOUS_POTATO = $v,
+			"poplar_boat" => fn(Boat $v) => self::$_mPOPLAR_BOAT = $v,
+			"poplar_hanging_sign" => fn(HangingSign $v) => self::$_mPOPLAR_HANGING_SIGN = $v,
+			"poplar_sign" => fn(ItemBlockWallOrFloor $v) => self::$_mPOPLAR_SIGN = $v,
 			"popped_chorus_fruit" => fn(Item $v) => self::$_mPOPPED_CHORUS_FRUIT = $v,
 			"potato" => fn(Potato $v) => self::$_mPOTATO = $v,
 			"potion" => fn(Potion $v) => self::$_mPOTION = $v,
@@ -1384,6 +1392,11 @@ final class VanillaItems{
 		return clone self::$_mCRIMSON_SIGN;
 	}
 
+	public static function CUSHION() : Cushion{
+		if(!isset(self::$_mCUSHION)){ self::init(); }
+		return clone self::$_mCUSHION;
+	}
+
 	public static function DARK_OAK_BOAT() : Boat{
 		if(!isset(self::$_mDARK_OAK_BOAT)){ self::init(); }
 		return clone self::$_mDARK_OAK_BOAT;
@@ -2062,6 +2075,21 @@ final class VanillaItems{
 	public static function POISONOUS_POTATO() : PoisonousPotato{
 		if(!isset(self::$_mPOISONOUS_POTATO)){ self::init(); }
 		return clone self::$_mPOISONOUS_POTATO;
+	}
+
+	public static function POPLAR_BOAT() : Boat{
+		if(!isset(self::$_mPOPLAR_BOAT)){ self::init(); }
+		return clone self::$_mPOPLAR_BOAT;
+	}
+
+	public static function POPLAR_HANGING_SIGN() : HangingSign{
+		if(!isset(self::$_mPOPLAR_HANGING_SIGN)){ self::init(); }
+		return clone self::$_mPOPLAR_HANGING_SIGN;
+	}
+
+	public static function POPLAR_SIGN() : ItemBlockWallOrFloor{
+		if(!isset(self::$_mPOPLAR_SIGN)){ self::init(); }
+		return clone self::$_mPOPLAR_SIGN;
 	}
 
 	public static function POPPED_CHORUS_FRUIT() : Item{

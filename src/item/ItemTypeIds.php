@@ -395,8 +395,12 @@ final class ItemTypeIds{
 	public const RECORD_TEARS = 20354;
 	public const CHERRY_BOAT = 20355;
 	public const PALE_OAK_BOAT = 20356;
+	public const POPLAR_SIGN = 20357;
+	public const POPLAR_HANGING_SIGN = 20358;
+	public const POPLAR_BOAT = 20359;
+	public const CUSHION = 20360;
 
-	public const FIRST_UNUSED_ITEM_ID = 20357;
+	public const FIRST_UNUSED_ITEM_ID = 20361;
 
 	private static int $nextDynamicId = self::FIRST_UNUSED_ITEM_ID;
 
