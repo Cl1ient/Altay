@@ -91,6 +91,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 	private const CAVES_CLIFFS_EXPERIMENTAL_SUBCHUNK_KEY_OFFSET = 4;
 
 	protected \LevelDB $db;
+	private LittleEndianNbtSerializer $nbtSerializer;
 
 	private static function checkForLevelDBExtension() : void{
 		if(!extension_loaded('leveldb')){
@@ -116,6 +117,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 		self::checkForLevelDBExtension();
 		parent::__construct($path, $logger);
 
+		$this->nbtSerializer = new LittleEndianNbtSerializer();
 		try{
 			$this->db = self::createDB($path);
 		}catch(\LevelDBException $e){
@@ -164,7 +166,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 		}catch(\InvalidArgumentException $e){
 			throw new CorruptedChunkException("Failed to deserialize paletted storage: " . $e->getMessage(), 0, $e);
 		}
-		$nbt = new LittleEndianNbtSerializer();
+		$nbt = $this->nbtSerializer;
 		$palette = [];
 
 		if($bitsPerBlock === 0){
@@ -262,7 +264,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 			$tags[] = new TreeRoot($this->blockStateSerializer->serialize($p)->toNbt());
 		}
 
-		$stream->put((new LittleEndianNbtSerializer())->writeMultiple($tags));
+		$stream->put($this->nbtSerializer->writeMultiple($tags));
 	}
 
 	/**
@@ -427,8 +429,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 		return $extraDataLayers;
 	}
 
-	private function readVersion(int $chunkX, int $chunkZ) : ?int{
-		$index = self::chunkIndex($chunkX, $chunkZ);
+	private function readVersion(string $index) : ?int{
 		$chunkVersionRaw = $this->db->get($index . ChunkDataKey::NEW_VERSION);
 		if($chunkVersionRaw === false){
 			$chunkVersionRaw = $this->db->get($index . ChunkDataKey::OLD_VERSION);
@@ -671,7 +672,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 	public function loadChunk(int $chunkX, int $chunkZ) : ?LoadedChunkData{
 		$index = LevelDB::chunkIndex($chunkX, $chunkZ);
 
-		$chunkVersion = $this->readVersion($chunkX, $chunkZ);
+		$chunkVersion = $this->readVersion($index);
 		if($chunkVersion === null){
 			//TODO: this might be a slightly-corrupted chunk with a missing version field
 			return null;
@@ -748,7 +749,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 			$hasBeenUpgraded = true;
 		}
 
-		$nbt = new LittleEndianNbtSerializer();
+		$nbt = $this->nbtSerializer;
 
 		$entities = [];
 		if(($entityData = $this->db->get($index . ChunkDataKey::ENTITIES)) !== false && $entityData !== ""){
@@ -810,12 +811,12 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 	 * @phpstan-return array<int, SubChunk>|null
 	 */
 	private function deserializeNeighbourSubChunks(int $chunkX, int $chunkZ) : ?array{
-		$chunkVersion = $this->readVersion($chunkX, $chunkZ);
+		$index = LevelDB::chunkIndex($chunkX, $chunkZ);
+		$chunkVersion = $this->readVersion($index);
 		if($chunkVersion === null){
 			return null;
 		}
 
-		$index = LevelDB::chunkIndex($chunkX, $chunkZ);
 		$logger = new \PrefixedLogger($this->logger, "Reading neighbour chunk x=$chunkX z=$chunkZ v$chunkVersion");
 		$ignoredUpgrade = false;
 		try{
@@ -846,6 +847,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 
 		$write->put($index . ChunkDataKey::NEW_VERSION, chr(self::CURRENT_LEVEL_CHUNK_VERSION));
 		$write->put($index . ChunkDataKey::PM_DATA_VERSION, Binary::writeLLong(VersionInfo::WORLD_DATA_VERSION));
+		$write->delete($index . ChunkDataKey::OLD_VERSION);
 
 		$subChunks = $chunkData->getSubChunks();
 
@@ -895,7 +897,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 	 */
 	private function writeTags(array $targets, string $index, \LevelDBWriteBatch $write) : void{
 		if(count($targets) > 0){
-			$nbt = new LittleEndianNbtSerializer();
+			$nbt = $this->nbtSerializer;
 			$write->put($index, $nbt->writeMultiple(array_map(fn(CompoundTag $tag) => new TreeRoot($tag), $targets)));
 		}else{
 			$write->delete($index);
@@ -921,7 +923,12 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 	public function getAllChunks(bool $skipCorrupted = false, ?\Logger $logger = null) : \Generator{
 		foreach($this->db->getIterator() as $key => $_){
 			if(strlen($key) === 9 && ($key[8] === ChunkDataKey::NEW_VERSION || $key[8] === ChunkDataKey::OLD_VERSION)){
-				$chunkX = Binary::readLInt(substr($key, 0, 4));
+				$index = substr($key, 0, 8);
+				if($key[8] === ChunkDataKey::OLD_VERSION && $this->db->get($index . ChunkDataKey::NEW_VERSION) !== false){
+					continue;
+				}
+
+				$chunkX = Binary::readLInt(substr($index, 0, 4));
 				$chunkZ = Binary::readLInt(substr($key, 4, 4));
 				try{
 					if(($chunk = $this->loadChunk($chunkX, $chunkZ)) !== null){
@@ -943,7 +950,10 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 		$count = 0;
 		foreach($this->db->getIterator() as $key => $_){
 			if(strlen($key) === 9 && ($key[8] === ChunkDataKey::NEW_VERSION || $key[8] === ChunkDataKey::OLD_VERSION)){
-				$count++;
+				$index = substr($key, 0, 8);
+				if($key[8] !== ChunkDataKey::OLD_VERSION || $this->db->get($index . ChunkDataKey::NEW_VERSION) === false){
+					++$count;
+				}
 			}
 		}
 		return $count;
