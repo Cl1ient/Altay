@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "fbc8ba9bac780a7b69bc299785fd5bb7",
+    "content-hash": "033bdcf469d33bc46c06110a23ac9a30",
     "packages": [
         {
             "name": "adhocore/json-comment",
@@ -67,40 +67,41 @@
         },
         {
             "name": "altayofficial/bedrock-data",
-            "version": "dev-bedrock-1.26.50",
+            "version": "6.9.0+bedrock-1.26.50",
             "source": {
                 "type": "git",
                 "url": "https://github.com/altayofficial/BedrockData.git",
-                "reference": "1210998008ad866b8176042c82716956f8fe86ab"
+                "reference": "508b8791188868f2d92a55be8b2be2e771a6a171"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/altayofficial/BedrockData/zipball/1210998008ad866b8176042c82716956f8fe86ab",
-                "reference": "1210998008ad866b8176042c82716956f8fe86ab",
+                "url": "https://api.github.com/repos/altayofficial/BedrockData/zipball/508b8791188868f2d92a55be8b2be2e771a6a171",
+                "reference": "508b8791188868f2d92a55be8b2be2e771a6a171",
                 "shasum": ""
             },
             "type": "library",
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "CC0-1.0"
             ],
             "description": "Blobs of data generated from Minecraft: Bedrock Edition, used by Altayz",
             "support": {
-                "source": "https://github.com/altayofficial/BedrockData/tree/bedrock-1.26.50"
+                "source": "https://github.com/altayofficial/BedrockData/tree/6.9.0+bedrock-1.26.50"
             },
-            "time": "2026-09-15T16:13:24+00:00"
+            "time": "2026-09-19T12:56:44+00:00"
         },
         {
             "name": "altayofficial/bedrock-protocol",
-            "version": "dev-bedrock-1.26.50",
+            "version": "60.0.0+bedrock-1.26.50",
             "source": {
                 "type": "git",
                 "url": "https://github.com/altayofficial/BedrockProtocol.git",
-                "reference": "f6f735a41e46c498b52b2820ca28b76322213627"
+                "reference": "669bf4ecf7c8db198bad694af5e7907a8317ce1d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/altayofficial/BedrockProtocol/zipball/f6f735a41e46c498b52b2820ca28b76322213627",
-                "reference": "f6f735a41e46c498b52b2820ca28b76322213627",
+                "url": "https://api.github.com/repos/altayofficial/BedrockProtocol/zipball/669bf4ecf7c8db198bad694af5e7907a8317ce1d",
+                "reference": "669bf4ecf7c8db198bad694af5e7907a8317ce1d",
                 "shasum": ""
             },
             "require": {
@@ -126,25 +127,16 @@
                     "pocketmine\\network\\mcpe\\protocol\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "pocketmine\\network\\mcpe\\protocol\\": "tests/phpunit/"
-                }
-            },
-            "scripts": {
-                "update-create-methods": [
-                    "@php tools/generate-create-static-methods.php"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "LGPL-3.0"
             ],
             "description": "An implementation of the Minecraft: Bedrock Edition protocol in PHP",
             "support": {
-                "source": "https://github.com/altayofficial/BedrockProtocol/tree/bedrock-1.26.50",
-                "issues": "https://github.com/altayofficial/BedrockProtocol/issues"
+                "issues": "https://github.com/altayofficial/BedrockProtocol/issues",
+                "source": "https://github.com/altayofficial/BedrockProtocol/tree/60.0.0+bedrock-1.26.50"
             },
-            "time": "2026-09-15T16:11:30+00:00"
+            "time": "2026-09-15T16:14:17+00:00"
         },
         {
             "name": "altayofficial/dtls",
@@ -175,32 +167,20 @@
                     "altay\\dtls\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "altay\\dtls\\tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "phpunit"
-                ],
-                "analyse": [
-                    "phpstan analyse"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "GPL-3.0-or-later"
             ],
             "description": "Pure PHP DTLS 1.2 - no FFI, no native libraries",
             "support": {
-                "source": "https://github.com/altayofficial/dtls/tree/1.0.1",
-                "issues": "https://github.com/altayofficial/dtls/issues"
+                "issues": "https://github.com/altayofficial/dtls/issues",
+                "source": "https://github.com/altayofficial/dtls/tree/1.0.1"
             },
             "time": "2026-09-16T17:27:00+00:00"
         },
         {
             "name": "altayofficial/nbt",
-            "version": "dev-stable",
+            "version": "1.3.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/altayofficial/NBT.git",
@@ -224,18 +204,13 @@
                 "phpstan/phpstan-strict-rules": "^2.0",
                 "phpunit/phpunit": "^9.5"
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
                     "pocketmine\\nbt\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "pocketmine\\nbt\\": "tests/phpunit/"
-                }
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "LGPL-3.0"
             ],
@@ -247,16 +222,16 @@
         },
         {
             "name": "altayofficial/network",
-            "version": "dev-main",
+            "version": "1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/altayofficial/Network.git",
-                "reference": "bb26631ba99735aed725fb2934d2453c04cbb9a8"
+                "reference": "685fa5e7f43fe8d5b92496eb5f6c43c1efd8b028"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/altayofficial/Network/zipball/bb26631ba99735aed725fb2934d2453c04cbb9a8",
-                "reference": "bb26631ba99735aed725fb2934d2453c04cbb9a8",
+                "url": "https://api.github.com/repos/altayofficial/Network/zipball/685fa5e7f43fe8d5b92496eb5f6c43c1efd8b028",
+                "reference": "685fa5e7f43fe8d5b92496eb5f6c43c1efd8b028",
                 "shasum": ""
             },
             "require": {
@@ -266,7 +241,6 @@
                 "php": "^8.1",
                 "pocketmine/binaryutils": "^0.2.6",
                 "pocketmine/log": "^0.4.0",
-                "psr/log": "^3.0",
                 "react/event-loop": "^1.5"
             },
             "require-dev": {
@@ -279,35 +253,22 @@
                 "altayofficial/webrtc": "Required for the NetherNet transport",
                 "react/http": "Required for NetherNet endpoint signalling over HTTP"
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
                     "altay\\network\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "altay\\network\\tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "phpunit"
-                ],
-                "analyse": [
-                    "phpstan analyse"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "GPL-3.0-or-later"
             ],
             "description": "Central network library for Altay family written in PHP",
             "support": {
-                "source": "https://github.com/altayofficial/Network/tree/main",
-                "issues": "https://github.com/altayofficial/Network/issues"
+                "issues": "https://github.com/altayofficial/Network/issues",
+                "source": "https://github.com/altayofficial/Network/tree/1.1.0"
             },
-            "time": "2026-09-16T17:28:05+00:00"
+            "time": "2026-08-24T11:49:58+00:00"
         },
         {
             "name": "altayofficial/webrtc",
@@ -357,59 +318,61 @@
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "Webrtc\\DTLS\\": "src/dtls/src/",
-                    "Webrtc\\DataChannel\\": "src/datachannel/src/",
-                    "Webrtc\\Exception\\": "src/exception/src/",
                     "Webrtc\\ICE\\": "src/ice/src/",
-                    "Webrtc\\MDNS\\": "src/mdns/src/",
-                    "Webrtc\\Mixin\\": "src/mixin/src/",
                     "Webrtc\\NTP\\": "src/ntp/src/",
-                    "Webrtc\\RTPParameter\\": "src/rtp-parameter/src/",
-                    "Webrtc\\SCTP\\": "src/sctp/src/",
                     "Webrtc\\SDP\\": "src/sdp/src/",
+                    "Webrtc\\DTLS\\": "src/dtls/src/",
+                    "Webrtc\\MDNS\\": "src/mdns/src/",
+                    "Webrtc\\SCTP\\": "src/sctp/src/",
                     "Webrtc\\STUN\\": "src/stun/src/",
-                    "Webrtc\\Stats\\": "src/stats/src/",
                     "Webrtc\\TURN\\": "src/turn/src/",
-                    "Webrtc\\Webrtc\\": "src/webrtc/src/"
+                    "Webrtc\\Mixin\\": "src/mixin/src/",
+                    "Webrtc\\Stats\\": "src/stats/src/",
+                    "Webrtc\\Webrtc\\": "src/webrtc/src/",
+                    "Webrtc\\Exception\\": "src/exception/src/",
+                    "Webrtc\\DataChannel\\": "src/datachannel/src/",
+                    "Webrtc\\RTPParameter\\": "src/rtp-parameter/src/"
                 },
                 "classmap": [
                     "src/turn/src/Trait/TurnConnection.php"
                 ]
             },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "BSD-3-Clause"
             ],
             "description": "A WebRTC library designed special for Altay family",
             "support": {
-                "source": "https://github.com/altayofficial/webrtc/tree/1.6.5",
-                "issues": "https://github.com/altayofficial/webrtc/issues"
+                "issues": "https://github.com/altayofficial/webrtc/issues",
+                "source": "https://github.com/altayofficial/webrtc/tree/1.6.5"
             },
             "time": "2026-09-15T15:58:48+00:00"
         },
         {
             "name": "altayofficial/worldupgraderschemas",
-            "version": "dev-bedrock-1.26.50",
+            "version": "1.18.0+bedrock-1.26.50",
             "source": {
                 "type": "git",
                 "url": "https://github.com/altayofficial/WorldUpgraderSchemas.git",
-                "reference": "82967e9d9dde4762eb5a629273e9dbab18cd9b61"
+                "reference": "0811909ecb0089fd2839f3e5c9ca923f041fa804"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/altayofficial/WorldUpgraderSchemas/zipball/82967e9d9dde4762eb5a629273e9dbab18cd9b61",
-                "reference": "82967e9d9dde4762eb5a629273e9dbab18cd9b61",
+                "url": "https://api.github.com/repos/altayofficial/WorldUpgraderSchemas/zipball/0811909ecb0089fd2839f3e5c9ca923f041fa804",
+                "reference": "0811909ecb0089fd2839f3e5c9ca923f041fa804",
                 "shasum": ""
             },
             "type": "library",
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "CC0-1.0"
             ],
             "description": "JSON schemas for upgrading worlds",
             "support": {
-                "source": "https://github.com/altayofficial/WorldUpgraderSchemas/tree/bedrock-1.26.50",
-                "issues": "https://github.com/altayofficial/WorldUpgraderSchemas/issues"
+                "issues": "https://github.com/altayofficial/WorldUpgraderSchemas/issues",
+                "source": "https://github.com/altayofficial/WorldUpgraderSchemas/tree/1.18.0+bedrock-1.26.50"
             },
-            "time": "2026-09-02T14:14:23+00:00"
+            "time": "2026-09-19T13:01:24+00:00"
         },
         {
             "name": "brick/math",
@@ -3843,22 +3806,9 @@
             "time": "2025-11-17T20:03:58+00:00"
         }
     ],
-    "aliases": [
-        {
-            "package": "altayofficial/nbt",
-            "version": "dev-stable",
-            "alias": "1.3.0",
-            "alias_normalized": "1.3.0.0"
-        }
-    ],
+    "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "altayofficial/bedrock-data": 20,
-        "altayofficial/bedrock-protocol": 20,
-        "altayofficial/nbt": 20,
-        "altayofficial/network": 20,
-        "altayofficial/worldupgraderschemas": 20
-    },
+    "stability-flags": {},
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
