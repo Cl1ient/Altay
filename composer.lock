@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "033bdcf469d33bc46c06110a23ac9a30",
+    "content-hash": "668d2fa10c996a7b57541103b46cf53d",
     "packages": [
         {
             "name": "adhocore/json-comment",
@@ -222,16 +222,16 @@
         },
         {
             "name": "altayofficial/network",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/altayofficial/Network.git",
-                "reference": "685fa5e7f43fe8d5b92496eb5f6c43c1efd8b028"
+                "reference": "af4f91a6dbd241005b477d686210a5b572cd459e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/altayofficial/Network/zipball/685fa5e7f43fe8d5b92496eb5f6c43c1efd8b028",
-                "reference": "685fa5e7f43fe8d5b92496eb5f6c43c1efd8b028",
+                "url": "https://api.github.com/repos/altayofficial/Network/zipball/af4f91a6dbd241005b477d686210a5b572cd459e",
+                "reference": "af4f91a6dbd241005b477d686210a5b572cd459e",
                 "shasum": ""
             },
             "require": {
@@ -241,6 +241,7 @@
                 "php": "^8.1",
                 "pocketmine/binaryutils": "^0.2.6",
                 "pocketmine/log": "^0.4.0",
+                "psr/log": "^3.0",
                 "react/event-loop": "^1.5"
             },
             "require-dev": {
@@ -266,9 +267,9 @@
             "description": "Central network library for Altay family written in PHP",
             "support": {
                 "issues": "https://github.com/altayofficial/Network/issues",
-                "source": "https://github.com/altayofficial/Network/tree/1.1.0"
+                "source": "https://github.com/altayofficial/Network/tree/1.2.0"
             },
-            "time": "2026-08-24T11:49:58+00:00"
+            "time": "2026-09-19T13:19:25+00:00"
         },
         {
             "name": "altayofficial/webrtc",
