@@ -31,6 +31,7 @@ namespace pocketmine\world\format\io;
  */
 final class LoadedChunkData{
 	public const FIXER_FLAG_NONE = 0;
+	public const FIXER_FLAG_DERIVED_BLOCK_STATES = 1 << 0;
 	public const FIXER_FLAG_ALL = ~0;
 
 	public function __construct(

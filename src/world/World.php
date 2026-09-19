@@ -32,6 +32,7 @@ use pocketmine\block\Air;
 use pocketmine\block\Block;
 use pocketmine\block\BlockTypeIds;
 use pocketmine\block\RuntimeBlockStateRegistry;
+use pocketmine\block\StateDeriving;
 use pocketmine\block\tile\Spawnable;
 use pocketmine\block\tile\Tile;
 use pocketmine\block\tile\TileFactory;
@@ -93,6 +94,7 @@ use pocketmine\world\format\Chunk;
 use pocketmine\world\format\io\ChunkData;
 use pocketmine\world\format\io\exception\CorruptedChunkException;
 use pocketmine\world\format\io\GlobalBlockStateHandlers;
+use pocketmine\world\format\io\LoadedChunkData;
 use pocketmine\world\format\io\WritableWorldProvider;
 use pocketmine\world\format\LightArray;
 use pocketmine\world\format\SubChunk;
@@ -297,6 +299,14 @@ class World implements ChunkManager{
 	 * @phpstan-var array<ChunkPosHash, true>
 	 */
 	private array $knownUngeneratedChunks = [];
+
+	/**
+	 * Chunks containing old block states which must be recomputed once their neighbours are loaded.
+	 *
+	 * @var array<int, array{int, int}>
+	 * @phpstan-var array<ChunkPosHash, array{int, int}>
+	 */
+	private array $legacyDerivedStateChunks = [];
 
 	/**
 	 * @var Vector3[][] chunkHash => [relativeBlockHash => Vector3]
@@ -2680,6 +2690,7 @@ class World implements ChunkManager{
 		unset($this->changedBlocks[$chunkHash]);
 		$chunk->setTerrainDirty();
 		$this->markTickingChunkForRecheck($chunkX, $chunkZ); //this replacement chunk may not meet the conditions for ticking
+		$this->deriveLegacyBlockStatesAround($chunkX, $chunkZ);
 
 		if(!$this->isChunkInUse($chunkX, $chunkZ)){
 			$this->unloadChunkRequest($chunkX, $chunkZ);
@@ -2978,6 +2989,11 @@ class World implements ChunkManager{
 
 		$this->initChunk($x, $z, $chunkData, $chunk);
 
+		if(($loadedChunkData->getFixerFlags() & LoadedChunkData::FIXER_FLAG_DERIVED_BLOCK_STATES) !== 0){
+			$this->legacyDerivedStateChunks[$chunkHash] = [$x, $z];
+		}
+		$this->deriveLegacyBlockStatesAround($x, $z);
+
 		if(ChunkLoadEvent::hasHandlers()){
 			(new ChunkLoadEvent($this, $x, $z, $this->chunks[$chunkHash], false))->call();
 		}
@@ -2994,6 +3010,101 @@ class World implements ChunkManager{
 		$this->timings->syncChunkLoad->stopTiming();
 
 		return $this->chunks[$chunkHash];
+	}
+
+	/**
+	 * Retries this chunk and its neighbours whenever another chunk enters the world. A legacy chunk
+	 * is only rewritten after every horizontal neighbour it may read is available in memory.
+	 */
+	private function deriveLegacyBlockStatesAround(int $chunkX, int $chunkZ) : void{
+		for($offsetX = -1; $offsetX <= 1; ++$offsetX){
+			for($offsetZ = -1; $offsetZ <= 1; ++$offsetZ){
+				$hash = World::chunkHash($chunkX + $offsetX, $chunkZ + $offsetZ);
+				if(isset($this->legacyDerivedStateChunks[$hash])){
+					[$candidateX, $candidateZ] = $this->legacyDerivedStateChunks[$hash];
+					$this->deriveLegacyBlockStates($candidateX, $candidateZ);
+				}
+			}
+		}
+	}
+
+	private function deriveLegacyBlockStates(int $chunkX, int $chunkZ) : void{
+		$chunkHash = World::chunkHash($chunkX, $chunkZ);
+		$chunk = $this->chunks[$chunkHash] ?? null;
+		if($chunk === null){
+			return;
+		}
+
+		$containsDerivedStates = false;
+		foreach($chunk->getSubChunks() as $subChunk){
+			$blockLayer = $subChunk->getBlockLayers()[0] ?? null;
+			if($blockLayer === null){
+				continue;
+			}
+			foreach($blockLayer->getPalette() as $stateId){
+				if($this->blockStateRegistry->fromStateId($stateId) instanceof StateDeriving){
+					$containsDerivedStates = true;
+					break 2;
+				}
+			}
+		}
+
+		if(!$containsDerivedStates){
+			unset($this->legacyDerivedStateChunks[$chunkHash]);
+			return;
+		}
+
+		foreach(Facing::HORIZONTAL as $facing){
+			[$offsetX, $_, $offsetZ] = Facing::OFFSET[$facing];
+			if(!isset($this->chunks[World::chunkHash($chunkX + $offsetX, $chunkZ + $offsetZ)])){
+				return;
+			}
+		}
+
+		$baseX = $chunkX << Chunk::COORD_BIT_SIZE;
+		$baseZ = $chunkZ << Chunk::COORD_BIT_SIZE;
+		foreach($chunk->getSubChunks() as $subY => $subChunk){
+			$blockLayer = $subChunk->getBlockLayers()[0] ?? null;
+			if($blockLayer === null){
+				continue;
+			}
+
+			$scan = false;
+			foreach($blockLayer->getPalette() as $stateId){
+				if($this->blockStateRegistry->fromStateId($stateId) instanceof StateDeriving){
+					$scan = true;
+					break;
+				}
+			}
+			if(!$scan){
+				continue;
+			}
+
+			$baseY = $subY << SubChunk::COORD_BIT_SIZE;
+			for($x = 0; $x < SubChunk::EDGE_LENGTH; ++$x){
+				for($z = 0; $z < SubChunk::EDGE_LENGTH; ++$z){
+					for($y = 0; $y < SubChunk::EDGE_LENGTH; ++$y){
+						$block = $this->blockStateRegistry->fromStateId($subChunk->getBlockStateId($x, $y, $z));
+						if(!$block instanceof StateDeriving){
+							continue;
+						}
+
+						$worldX = $baseX + $x;
+						$worldY = $baseY + $y;
+						$worldZ = $baseZ + $z;
+						$block->position($this, $worldX, $worldY, $worldZ);
+						if($block->deriveStateFromWorld()){
+							$this->setBlockAt($worldX, $worldY, $worldZ, $block, false);
+						}
+					}
+				}
+			}
+		}
+
+		//Even an already-correct block came from an old palette. Rewriting the chunk prevents this
+		//migration from running again on every load.
+		$chunk->setTerrainDirtyFlag(Chunk::DIRTY_FLAG_BLOCKS, true);
+		unset($this->legacyDerivedStateChunks[$chunkHash]);
 	}
 
 	private function initChunk(int $chunkX, int $chunkZ, ChunkData $chunkData, Chunk $chunk) : void{
@@ -3154,6 +3265,7 @@ class World implements ChunkManager{
 		}
 
 		unset($this->chunks[$chunkHash]);
+		unset($this->legacyDerivedStateChunks[$chunkHash]);
 		$this->blockCacheSize -= count($this->blockCache[$chunkHash] ?? []);
 		unset($this->blockCache[$chunkHash]);
 		unset($this->blockCollisionBoxCache[$chunkHash]);
