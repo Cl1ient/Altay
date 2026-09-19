@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 namespace pocketmine\world\format\io\leveldb;
 
+use pmmp\encoding\LE;
 use pocketmine\block\Block;
 use pocketmine\data\bedrock\BiomeIds;
 use pocketmine\data\bedrock\block\BlockStateData;
@@ -37,7 +38,6 @@ use pocketmine\nbt\NbtDataException;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\TreeRoot;
-use pocketmine\utils\Binary;
 use pocketmine\utils\BinaryDataException;
 use pocketmine\utils\BinaryStream;
 use pocketmine\utils\Utils;
@@ -787,7 +787,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 		$write = new \LevelDBWriteBatch();
 
 		$write->put($index . ChunkDataKey::NEW_VERSION, chr(self::CURRENT_LEVEL_CHUNK_VERSION));
-		$write->put($index . ChunkDataKey::PM_DATA_VERSION, Binary::writeLLong(VersionInfo::WORLD_DATA_VERSION));
+		$write->put($index . ChunkDataKey::PM_DATA_VERSION, LE::packSignedLong(VersionInfo::WORLD_DATA_VERSION));
 		$write->delete($index . ChunkDataKey::OLD_VERSION);
 
 		$subChunks = $chunkData->getSubChunks();
@@ -850,7 +850,7 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 	}
 
 	public static function chunkIndex(int $chunkX, int $chunkZ) : string{
-		return Binary::writeLInt($chunkX) . Binary::writeLInt($chunkZ);
+		return LE::packSignedInt($chunkX) . LE::packSignedInt($chunkZ);
 	}
 
 	public function doGarbageCollection() : void{
@@ -869,8 +869,8 @@ class LevelDB extends BaseWorldProvider implements WritableWorldProvider{
 					continue;
 				}
 
-				$chunkX = Binary::readLInt(substr($index, 0, 4));
-				$chunkZ = Binary::readLInt(substr($key, 4, 4));
+				$chunkX = LE::unpackSignedInt(substr($index, 0, 4));
+				$chunkZ = LE::unpackSignedInt(substr($key, 4, 4));
 				try{
 					if(($chunk = $this->loadChunk($chunkX, $chunkZ)) !== null){
 						yield [$chunkX, $chunkZ] => $chunk;
