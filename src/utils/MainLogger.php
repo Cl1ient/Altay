@@ -191,16 +191,18 @@ class MainLogger extends AttachableThreadSafeLogger implements \BufferedLogger{
 			$threadName = (new \ReflectionClass($thread))->getShortName() . " thread";
 		}
 
-		$message = sprintf($this->format, $time->format("H:i:s.v"), $color, $threadName, $prefix, TextFormat::addBase($color, TextFormat::clean($message, false)));
+		$cleanMessage = TextFormat::addBase($color, TextFormat::clean($message, false));
+		$message = sprintf($this->format, $time->format("H:i:s.v"), $color, $threadName, $prefix, $cleanMessage);
+		$fileMessage = sprintf($this->format, $time->format("H:i:s.vP"), $color, $threadName, $prefix, $cleanMessage);
 
 		if(!Terminal::isInit()){
 			Terminal::init($this->useFormattingCodes); //lazy-init colour codes because we don't know if they've been registered on this thread
 		}
 
-		$this->synchronized(function() use ($message, $level, $time) : void{
+		$this->synchronized(function() use ($message, $fileMessage, $level, $time) : void{
 			Terminal::writeLine($message);
 			if($this->logWriterThread !== null){
-				$this->logWriterThread->write($time->format("Y-m-d") . " " . TextFormat::clean($message) . PHP_EOL);
+				$this->logWriterThread->write($time->format("Y-m-d") . " " . TextFormat::clean($fileMessage) . PHP_EOL);
 			}
 
 			/**
