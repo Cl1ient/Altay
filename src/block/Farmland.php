@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
+use pocketmine\block\utils\BlockEventHelper;
 use pocketmine\data\runtime\RuntimeDataDescriber;
 use pocketmine\entity\Entity;
 use pocketmine\entity\Living;
@@ -127,8 +128,7 @@ class Farmland extends Transparent{
 					$changed = true;
 				}
 			}else{
-				$world->setBlock($this->position, VanillaBlocks::DIRT());
-				$changed = true;
+				$changed = BlockEventHelper::die($this, VanillaBlocks::DIRT());
 			}
 		}elseif($this->wetness < self::MAX_WETNESS){
 			$event = new FarmlandHydrationChangeEvent($this, $this->wetness, self::MAX_WETNESS);
