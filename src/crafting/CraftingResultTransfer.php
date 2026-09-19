@@ -81,4 +81,32 @@ final class CraftingResultTransfer{
 			return;
 		}
 	}
+
+	/**
+	 * Smithing transforms (e.g. netherite upgrades) keep everything from the base item (enchantments, custom name,
+	 * damage, trim...) and only change its type. The base is the input accepted by the recipe's first ingredient.
+	 *
+	 * @param Item[] $inputs
+	 * @param Item[] $results
+	 * @phpstan-param array<int, Item> $inputs
+	 * @phpstan-param array<int, Item> $results
+	 */
+	public static function transferSmithingBaseNamedTag(ShapelessRecipe $recipe, array $inputs, array $results) : void{
+		if($recipe->getType() !== ShapelessRecipeType::SMITHING){
+			return;
+		}
+		$baseIngredient = $recipe->getIngredientList()[0] ?? null;
+		if($baseIngredient === null){
+			return;
+		}
+		foreach($inputs as $input){
+			if(!$baseIngredient->accepts($input)){
+				continue;
+			}
+			foreach($results as $result){
+				$result->setNamedTag(clone $input->getNamedTag());
+			}
+			return;
+		}
+	}
 }

@@ -26,7 +26,11 @@ declare(strict_types=1);
 namespace pocketmine\network\mcpe\handler;
 
 use pocketmine\block\inventory\EnchantInventory;
+use pocketmine\block\inventory\SmithingTableInventory;
 use pocketmine\crafting\CraftingResultTransfer;
+use pocketmine\crafting\ShapelessRecipe;
+use pocketmine\crafting\SmithingTrimRecipe;
+use pocketmine\data\bedrock\item\ArmorTrimIdMap;
 use pocketmine\inventory\Inventory;
 use pocketmine\inventory\transaction\action\CreateItemAction;
 use pocketmine\inventory\transaction\action\DestroyItemAction;
@@ -34,8 +38,11 @@ use pocketmine\inventory\transaction\action\DropItemAction;
 use pocketmine\inventory\transaction\CraftingTransaction;
 use pocketmine\inventory\transaction\EnchantingTransaction;
 use pocketmine\inventory\transaction\InventoryTransaction;
+use pocketmine\inventory\transaction\SmithingTrimTransaction;
 use pocketmine\inventory\transaction\TransactionBuilder;
 use pocketmine\inventory\transaction\TransactionBuilderInventory;
+use pocketmine\item\Armor;
+use pocketmine\item\ArmorTrim;
 use pocketmine\item\Durable;
 use pocketmine\item\Item;
 use pocketmine\network\mcpe\cache\CraftingDataCache;
@@ -248,11 +255,22 @@ class ItemStackRequestExecutor{
 			throw new ItemStackRequestProcessException("No such crafting recipe index: $recipeIndex");
 		}
 
+		if($recipe instanceof SmithingTrimRecipe){
+			//the result depends on the specific pattern/material used, which can't be expressed through the generic
+			//recipe matching system - see SmithingTrimTransaction
+			$this->beginSmithingTrim();
+			return;
+		}
+
 		$this->specialTransaction = new CraftingTransaction($this->player, $craftingManager, [], $recipe, $repetitions);
 
 		//CraftRecipeAuto may leave the crafting grid empty; container NBT is copied when
 		//CraftingConsumeInput is handled below (needed for shulker box dyeing etc.)
 		$craftingResults = $recipe->getResultsFor($this->player->getCraftingGrid());
+		$window = $this->player->getCurrentWindow();
+		if($recipe instanceof ShapelessRecipe && $window instanceof SmithingTableInventory){
+			CraftingResultTransfer::transferSmithingBaseNamedTag($recipe, $window->getContents(), $craftingResults);
+		}
 		foreach($craftingResults as $k => $craftingResult){
 			$craftingResult->setCount($craftingResult->getCount() * $repetitions);
 			$this->craftingResults[$k] = $craftingResult;
@@ -261,6 +279,48 @@ class ItemStackRequestExecutor{
 			//for multi-output recipes, later actions will tell us which result to create and when
 			$this->setNextCreatedItem($this->craftingResults[array_key_first($this->craftingResults)]);
 		}
+	}
+
+	/**
+	 * @throws ItemStackRequestProcessException
+	 */
+	private function beginSmithingTrim() : void{
+		$window = $this->player->getCurrentWindow();
+		if(!$window instanceof SmithingTableInventory){
+			throw new ItemStackRequestProcessException("The armor trim recipe requires an open smithing table");
+		}
+
+		$registry = ArmorTrimIdMap::getInstance();
+		$equipment = null;
+		$patternId = null;
+		$materialId = null;
+		foreach($window->getContents() as $item){
+			if($item instanceof Armor){
+				if($equipment !== null){
+					throw new ItemStackRequestProcessException("More than 1 item to apply a trim to");
+				}
+				$equipment = $item;
+				continue;
+			}
+			if(($foundPattern = $registry->getPatternId($item)) !== null){
+				$patternId = $foundPattern;
+				continue;
+			}
+			if(($foundMaterial = $registry->getMaterialId($item)) !== null){
+				$materialId = $foundMaterial;
+			}
+		}
+
+		if($equipment === null || $patternId === null || $materialId === null){
+			throw new ItemStackRequestProcessException("Missing equipment, template or material for armor trim");
+		}
+
+		$this->specialTransaction = new SmithingTrimTransaction($this->player);
+
+		$result = clone $equipment;
+		$result->setTrim(new ArmorTrim($patternId, $materialId));
+		$this->craftingResults = [$result];
+		$this->setNextCreatedItem($result);
 	}
 
 	/**
@@ -296,7 +356,11 @@ class ItemStackRequestExecutor{
 	 * @throws ItemStackRequestProcessException
 	 */
 	private function assertDoingCrafting() : void{
-		if(!$this->specialTransaction instanceof CraftingTransaction && !$this->specialTransaction instanceof EnchantingTransaction){
+		if(
+			!$this->specialTransaction instanceof CraftingTransaction &&
+			!$this->specialTransaction instanceof EnchantingTransaction &&
+			!$this->specialTransaction instanceof SmithingTrimTransaction
+		){
 			if($this->specialTransaction === null){
 				throw new ItemStackRequestProcessException("Expected CraftRecipe or CraftRecipeAuto action to precede this action");
 			}else{

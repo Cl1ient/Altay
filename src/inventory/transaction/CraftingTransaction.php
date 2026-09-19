@@ -29,6 +29,7 @@ use pocketmine\crafting\CraftingManager;
 use pocketmine\crafting\CraftingRecipe;
 use pocketmine\crafting\CraftingResultTransfer;
 use pocketmine\crafting\RecipeIngredient;
+use pocketmine\crafting\ShapelessRecipe;
 use pocketmine\event\inventory\CraftItemEvent;
 use pocketmine\item\Item;
 use pocketmine\player\Player;
@@ -253,6 +254,9 @@ class CraftingTransaction extends InventoryTransaction{
 		//grid may already be empty by validate() time - use transaction inputs as a fallback
 		$results = $recipe->getResultsFor($this->source->getCraftingGrid());
 		CraftingResultTransfer::transferContainerNamedTag($this->inputs, $results);
+		if($recipe instanceof ShapelessRecipe){
+			CraftingResultTransfer::transferSmithingBaseNamedTag($recipe, $this->inputs, $results);
+		}
 		return $results;
 	}
 
