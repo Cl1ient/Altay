@@ -25,6 +25,9 @@ declare(strict_types=1);
 
 namespace pocketmine\entity;
 
+use function array_sum;
+use function is_infinite;
+use function is_nan;
 use function max;
 use function min;
 
@@ -51,7 +54,10 @@ class Attribute{
 	public const LAVA_MOVEMENT = self::MC_PREFIX . "lava_movement";
 
 	protected float $currentValue;
+	protected float $baseValue;
 	protected bool $desynchronized = true;
+	/** @var float[] */
+	private array $additiveModifiers = [];
 
 	public function __construct(
 		protected string $id,
@@ -63,7 +69,7 @@ class Attribute{
 		if($minValue > $maxValue || $defaultValue > $maxValue || $defaultValue < $minValue){
 			throw new \InvalidArgumentException("Invalid ranges: min value: $minValue, max value: $maxValue, $defaultValue: $defaultValue");
 		}
-		$this->currentValue = $this->defaultValue;
+		$this->baseValue = $this->currentValue = $this->defaultValue;
 	}
 
 	public function getMinValue() : float{
@@ -81,6 +87,7 @@ class Attribute{
 		if($this->minValue !== $minValue){
 			$this->desynchronized = true;
 			$this->minValue = $minValue;
+			$this->recalculateCurrentValue();
 		}
 		return $this;
 	}
@@ -100,6 +107,7 @@ class Attribute{
 		if($this->maxValue !== $maxValue){
 			$this->desynchronized = true;
 			$this->maxValue = $maxValue;
+			$this->recalculateCurrentValue();
 		}
 		return $this;
 	}
@@ -131,6 +139,10 @@ class Attribute{
 		return $this->currentValue;
 	}
 
+	public function getBaseValue() : float{
+		return $this->baseValue;
+	}
+
 	/**
 	 * @return $this
 	 */
@@ -142,14 +154,46 @@ class Attribute{
 			$value = min(max($value, $this->getMinValue()), $this->getMaxValue());
 		}
 
-		if($this->currentValue !== $value){
-			$this->desynchronized = true;
-			$this->currentValue = $value;
-		}elseif($forceSend){
+		if($this->baseValue !== $value){
+			$this->baseValue = $value;
+			$this->recalculateCurrentValue();
+		}
+		if($forceSend){
 			$this->desynchronized = true;
 		}
 
 		return $this;
+	}
+
+	/**
+	 * Adds or replaces an additive modifier without changing the attribute's base value.
+	 *
+	 * @internal
+	 * @return $this
+	 */
+	public function setAdditiveModifier(string $id, float $amount) : self{
+		if($id === ""){
+			throw new \InvalidArgumentException("Modifier ID cannot be empty");
+		}
+		if(is_nan($amount) || is_infinite($amount)){
+			throw new \InvalidArgumentException("Modifier amount must be finite");
+		}
+
+		if($amount === 0.0){
+			unset($this->additiveModifiers[$id]);
+		}else{
+			$this->additiveModifiers[$id] = $amount;
+		}
+		$this->recalculateCurrentValue();
+		return $this;
+	}
+
+	private function recalculateCurrentValue() : void{
+		$value = min(max($this->baseValue + array_sum($this->additiveModifiers), $this->getMinValue()), $this->getMaxValue());
+		if($this->currentValue !== $value){
+			$this->currentValue = $value;
+			$this->desynchronized = true;
+		}
 	}
 
 	public function getId() : string{

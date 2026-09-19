@@ -25,14 +25,20 @@ declare(strict_types=1);
 
 namespace pocketmine\item;
 
+use pocketmine\utils\Utils;
 use pocketmine\world\sound\Sound;
 
 class ArmorMaterial{
 
 	public function __construct(
 		private readonly int $enchantability,
-		private readonly ?Sound $equipSound = null
+		private readonly ?Sound $equipSound = null,
+		private readonly float $knockbackResistance = 0.0
 	){
+		Utils::checkFloatNotInfOrNaN("Knockback resistance", $knockbackResistance);
+		if($knockbackResistance < 0.0 || $knockbackResistance > 1.0){
+			throw new \InvalidArgumentException("Knockback resistance must be in range 0.0 - 1.0");
+		}
 	}
 
 	/**
@@ -50,5 +56,9 @@ class ArmorMaterial{
 	 */
 	public function getEquipSound() : ?Sound{
 		return $this->equipSound;
+	}
+
+	public function getKnockbackResistance() : float{
+		return $this->knockbackResistance;
 	}
 }

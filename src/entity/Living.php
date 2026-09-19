@@ -179,6 +179,9 @@ abstract class Living extends Entity{
 			},
 			onContentChange: function() : void{ $this->frostWalkerLevel = null; }
 		));
+		$this->armorInventory->getListeners()->add(CallbackInventoryListener::onAnyChange(
+			fn() => $this->updateArmorKnockbackResistance()
+		));
 
 		$health = $this->getMaxHealth();
 
@@ -448,6 +451,16 @@ abstract class Living extends Entity{
 
 	public function getArmorInventory() : ArmorInventory{
 		return $this->armorInventory;
+	}
+
+	private function updateArmorKnockbackResistance() : void{
+		$resistance = 0.0;
+		foreach($this->armorInventory->getContents() as $item){
+			if($item instanceof Armor){
+				$resistance += $item->getMaterial()->getKnockbackResistance();
+			}
+		}
+		$this->knockbackResistanceAttr->setAdditiveModifier("pocketmine:armor", $resistance);
 	}
 
 	public function setOnFire(int $seconds) : void{
