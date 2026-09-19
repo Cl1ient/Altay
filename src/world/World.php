@@ -1465,12 +1465,26 @@ class World implements ChunkManager{
 					$chunk->isPopulated(),
 					array_map(fn(Entity $e) => $e->saveNBT(), array_values(array_filter($this->getChunkEntities($chunkX, $chunkZ), fn(Entity $e) => $e->canSaveWithChunk()))),
 					array_map(fn(Tile $t) => $t->saveNBT(), array_values($chunk->getTiles())),
-				), $chunk->getTerrainDirtyFlags());
+				), $this->getChunkSaveDirtyFlags($chunkHash, $chunk));
 				$chunk->clearTerrainDirtyFlags();
 			}
 		}finally{
 			$this->timings->syncChunkSave->stopTiming();
 		}
+	}
+
+	/**
+	 * A pending derived-state migration must not advance the persisted data version. Otherwise an
+	 * autosave could mark the migration complete before the chunk's neighbours are available.
+	 *
+	 * @phpstan-param ChunkPosHash $chunkHash
+	 */
+	private function getChunkSaveDirtyFlags(int $chunkHash, Chunk $chunk) : int{
+		$dirtyFlags = $chunk->getTerrainDirtyFlags();
+		if(isset($this->legacyDerivedStateChunks[$chunkHash])){
+			$dirtyFlags &= ~Chunk::DIRTY_FLAG_DATA_VERSION;
+		}
+		return $dirtyFlags;
 	}
 
 	/**
@@ -3050,6 +3064,7 @@ class World implements ChunkManager{
 		}
 
 		if(!$containsDerivedStates){
+			$chunk->setTerrainDirtyFlag(Chunk::DIRTY_FLAG_DATA_VERSION, true);
 			unset($this->legacyDerivedStateChunks[$chunkHash]);
 			return;
 		}
@@ -3104,6 +3119,7 @@ class World implements ChunkManager{
 		//Even an already-correct block came from an old palette. Rewriting the chunk prevents this
 		//migration from running again on every load.
 		$chunk->setTerrainDirtyFlag(Chunk::DIRTY_FLAG_BLOCKS, true);
+		$chunk->setTerrainDirtyFlag(Chunk::DIRTY_FLAG_DATA_VERSION, true);
 		unset($this->legacyDerivedStateChunks[$chunkHash]);
 	}
 
@@ -3244,7 +3260,7 @@ class World implements ChunkManager{
 						$chunk->isPopulated(),
 						array_map(fn(Entity $e) => $e->saveNBT(), array_values(array_filter($this->getChunkEntities($x, $z), fn(Entity $e) => $e->canSaveWithChunk()))),
 						array_map(fn(Tile $t) => $t->saveNBT(), array_values($chunk->getTiles())),
-					), $chunk->getTerrainDirtyFlags());
+					), $this->getChunkSaveDirtyFlags($chunkHash, $chunk));
 				}finally{
 					$this->timings->syncChunkSave->stopTiming();
 				}
