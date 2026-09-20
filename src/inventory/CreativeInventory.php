@@ -57,6 +57,14 @@ final class CreativeInventory{
 	/** @phpstan-var ObjectSet<\Closure() : void> */
 	private ObjectSet $contentChangedCallbacks;
 
+	/** @phpstan-var array<string, true> */
+	private const EDUCATION_EDITION_GROUPS = [
+		"itemGroup.name.element" => true,
+		"itemGroup.name.chemistrytable" => true,
+		"itemGroup.name.compounds" => true,
+		"itemGroup.name.products" => true,
+	];
+
 	private function __construct(){
 		$this->contentChangedCallbacks = new ObjectSet();
 
@@ -144,6 +152,25 @@ final class CreativeInventory{
 			$blockStatesTag,
 			$nbt
 		);
+	}
+
+	public function removeEducationEditionContent() : void{
+		$removed = false;
+		foreach($this->creative as $index => $entry){
+			$group = $entry->getGroup();
+			if($group === null){
+				continue;
+			}
+			$name = $group->getName();
+			$name = $name instanceof Translatable ? $name->getText() : $name;
+			if(isset(self::EDUCATION_EDITION_GROUPS[$name])){
+				unset($this->creative[$index]);
+				$removed = true;
+			}
+		}
+		if($removed){
+			$this->onContentChange();
+		}
 	}
 
 	/**
