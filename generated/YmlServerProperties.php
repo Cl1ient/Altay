@@ -40,7 +40,6 @@ final class YmlServerProperties{
 	public const ALIASES = 'aliases';
 	public const ANONYMOUS_STATISTICS = 'anonymous-statistics';
 	public const ANONYMOUS_STATISTICS_ENABLED = 'anonymous-statistics.enabled';
-	public const ANONYMOUS_STATISTICS_HOST = 'anonymous-statistics.host';
 	public const AUTO_REPORT = 'auto-report';
 	public const AUTO_REPORT_ENABLED = 'auto-report.enabled';
 	public const AUTO_REPORT_HOST = 'auto-report.host';

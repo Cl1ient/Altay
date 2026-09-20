@@ -191,9 +191,9 @@ auto-report:
   host: crash.pmmp.io
 
 anonymous-statistics:
-  #Sends anonymous statistics for data aggregation, plugin usage tracking
-  enabled: false #TODO: re-enable this when we have a new stats host
-  host: stats.pocketmine.net
+  #Sends anonymous statistics to bStats for data aggregation
+  #https://bstats.org/plugin/server-implementation/Altay/34140
+  enabled: true
 
 auto-updater:
   enabled: true

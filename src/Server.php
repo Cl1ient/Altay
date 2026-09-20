@@ -100,7 +100,7 @@ use pocketmine\scheduler\AsyncPool;
 use pocketmine\scheduler\TimingsCollectionTask;
 use pocketmine\scheduler\TimingsControlTask;
 use pocketmine\snooze\SleeperHandler;
-use pocketmine\stats\SendUsageTask;
+use pocketmine\stats\BStatsMetricsTask;
 use pocketmine\thread\log\AttachableThreadSafeLogger;
 use pocketmine\thread\ThreadCrashException;
 use pocketmine\thread\ThreadSafeClassLoader;
@@ -163,6 +163,7 @@ use function min;
 use function mkdir;
 use function ob_end_flush;
 use function preg_replace;
+use function random_int;
 use function realpath;
 use function register_shutdown_function;
 use function rename;
@@ -220,7 +221,7 @@ class Server {
 
 	private const TICKS_PER_WORLD_CACHE_CLEAR = 5 * self::TARGET_TICKS_PER_SECOND;
 	private const TICKS_PER_TPS_OVERLOAD_WARNING = 5 * self::TARGET_TICKS_PER_SECOND;
-	private const TICKS_PER_STATS_REPORT = 300 * self::TARGET_TICKS_PER_SECOND;
+	private const TICKS_PER_METRICS_REPORT = 1800 * self::TARGET_TICKS_PER_SECOND;
 
 	private const DEFAULT_ASYNC_COMPRESSION_THRESHOLD = 10_000;
 
@@ -259,7 +260,7 @@ class Server {
 
 	private bool $doTitleTick = true;
 
-	private int $sendUsageTicker = 0;
+	private int $metricsTicker = 0;
 
 	private MemoryManager $memoryManager;
 
@@ -292,12 +293,6 @@ class Server {
 	private string $pluginPath;
 
 	private PlayerDataProvider $playerDataProvider;
-
-	/**
-	 * @var string[]
-	 * @phpstan-var array<string, string>
-	 */
-	private array $uniquePlayers = [];
 
 	private QueryInfo $queryInfo;
 
@@ -1086,8 +1081,9 @@ class Server {
 			}
 
 			if($this->configGroup->getPropertyBool(Yml::ANONYMOUS_STATISTICS_ENABLED, true)){
-				$this->sendUsageTicker = self::TICKS_PER_STATS_REPORT;
-				$this->sendUsage(SendUsageTask::TYPE_OPEN);
+				//bStats expects the first report to land at a random point in time, so that servers restarting at the
+				//same time of day don't all hit the backend at once
+				$this->metricsTicker = random_int(180, 360) * self::TARGET_TICKS_PER_SECOND;
 			}
 
 			$this->configGroup->save();
@@ -1759,10 +1755,6 @@ class Server {
 			$this->logger->emergency($this->language->translate(KnownTranslationFactory::pocketmine_server_forcingShutdown()));
 		}
 		try{
-			if(!$this->isRunning()){
-				$this->sendUsage(SendUsageTask::TYPE_CLOSE);
-			}
-
 			$this->hasStopped = true;
 
 			$this->shutdown();
@@ -1895,9 +1887,6 @@ class Server {
 		if(!$this->isRunning){
 			return;
 		}
-		if($this->sendUsageTicker > 0){
-			$this->sendUsage(SendUsageTask::TYPE_CLOSE);
-		}
 		$this->hasStopped = false;
 
 		ini_set("error_reporting", '0');
@@ -2024,12 +2013,7 @@ class Server {
 		foreach($this->playerList as $p){
 			$p->getNetworkSession()->onPlayerAdded($player);
 		}
-		$rawUUID = $player->getUniqueId()->getBytes();
-		$this->playerList[$rawUUID] = $player;
-
-		if($this->sendUsageTicker > 0){
-			$this->uniquePlayers[$rawUUID] = $rawUUID;
-		}
+		$this->playerList[$player->getUniqueId()->getBytes()] = $player;
 
 		return true;
 	}
@@ -2043,11 +2027,10 @@ class Server {
 		}
 	}
 
-	public function sendUsage(int $type = SendUsageTask::TYPE_STATUS) : void{
+	public function sendMetrics() : void{
 		if($this->configGroup->getPropertyBool(Yml::ANONYMOUS_STATISTICS_ENABLED, true)){
-			$this->asyncPool->submitTask(new SendUsageTask($this, $type, $this->uniquePlayers));
+			$this->asyncPool->submitTask(new BStatsMetricsTask($this));
 		}
-		$this->uniquePlayers = [];
 	}
 
 	public function getLanguage() : Language{
@@ -2138,9 +2121,9 @@ class Server {
 			$this->network->getBandwidthTracker()->rotateAverageHistory();
 		}
 
-		if($this->sendUsageTicker > 0 && --$this->sendUsageTicker === 0){
-			$this->sendUsageTicker = self::TICKS_PER_STATS_REPORT;
-			$this->sendUsage(SendUsageTask::TYPE_STATUS);
+		if($this->metricsTicker > 0 && --$this->metricsTicker === 0){
+			$this->metricsTicker = self::TICKS_PER_METRICS_REPORT;
+			$this->sendMetrics();
 		}
 
 		if(($this->tickCounter % self::TICKS_PER_WORLD_CACHE_CLEAR) === 0){
