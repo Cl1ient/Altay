@@ -188,7 +188,7 @@ auto-report:
   send-settings: true
   send-phpinfo: false
   use-https: true
-  host: crash.pmmp.io
+  host: crash.getaltay.org
 
 anonymous-statistics:
   #Sends anonymous statistics to bStats for data aggregation
