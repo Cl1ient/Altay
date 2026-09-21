@@ -35,7 +35,7 @@ use function spl_object_id;
  * This record will live until the end of the current timings session, even if its handler goes out of scope. This
  * ensures that timings collected by destroyed timers are still shown in the final report.
  */
-final class TimingsRecord implements \Stringable{
+final class TimingsRecord{
 	/**
 	 * @var self[]
 	 * @phpstan-var array<int, self>
@@ -130,7 +130,7 @@ final class TimingsRecord implements \Stringable{
 	public function startTiming(int $now) : void{
 		$this->start = $now;
 		self::$currentRecord = $this;
-		TimingsTimelineRegistry::startEntry($this);
+		TimingsTimeline::startEntry($this, $now);
 	}
 
 	public function stopTiming(int $now) : void{
@@ -146,7 +146,7 @@ final class TimingsRecord implements \Stringable{
 			throw new AssumptionFailedError("stopTiming() called on a non-current timer");
 		}
 		self::$currentRecord = $this->parentRecord;
-		TimingsTimelineRegistry::endEntry($this);
+		TimingsTimeline::endEntry($now);
 		$diff = $now - $this->start;
 		$this->totalTime += $diff;
 		$this->curTickTotal += $diff;
@@ -160,9 +160,5 @@ final class TimingsRecord implements \Stringable{
 
 	public static function getCurrentRecord() : ?self{
 		return self::$currentRecord;
-	}
-
-	public function __toString() : string{
-		return "TimingsRecord(timer={$this->getName()}, count={$this->count}, totalTime={$this->totalTime}ns, violations={$this->violations}, ticksActive={$this->ticksActive})";
 	}
 }

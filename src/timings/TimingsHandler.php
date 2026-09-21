@@ -31,7 +31,6 @@ use pocketmine\promise\Promise;
 use pocketmine\promise\PromiseResolver;
 use pocketmine\Server;
 use pocketmine\utils\AssumptionFailedError;
-use pocketmine\utils\BinaryStream;
 use pocketmine\utils\ObjectSet;
 use pocketmine\utils\Utils;
 use Symfony\Component\Filesystem\Path;
@@ -55,7 +54,6 @@ class TimingsHandler{
 	private const FORMAT_VERSION = 3; //thread timings collection
 
 	private static bool $enabled = false;
-	private static bool $timelineEnabled = false;
 	private static int $timingStart = 0;
 
 	/** @phpstan-var ObjectSet<\Closure(bool $enable) : void> */
@@ -132,14 +130,9 @@ class TimingsHandler{
 			}
 		}
 
-		$result[] = "###TIMELINE###";
-		$stream = new BinaryStream();
-		foreach(TimingsTimelineRegistry::getArchivedTimelines() as $timeline){
-			$stream->putByte(0);
-			$stream->put($timeline);
+		if(TimingsTimeline::hasData()){
+			$result = [...$result, ...TimingsTimeline::printSection()];
 		}
-		$result[] = $stream->getBuffer();
-		$result[] = "###TIMELINE END###";
 
 		return $result;
 	}
@@ -215,10 +208,6 @@ class TimingsHandler{
 		return self::$enabled;
 	}
 
-	public static function isTimelineEnabled() : bool{
-		return self::$timelineEnabled;
-	}
-
 	public static function setEnabled(bool $enable = true) : void{
 		if($enable === self::$enabled){
 			return;
@@ -232,16 +221,13 @@ class TimingsHandler{
 		}
 	}
 
-	public static function setTimelineEnabled(bool $enable = true) : void{
-		self::$timelineEnabled = $enable;
-	}
-
 	public static function getStartTime() : float{
 		return self::$timingStart;
 	}
 
 	private static function internalReload() : void{
 		TimingsRecord::reset();
+		TimingsTimeline::reset();
 		if(self::$enabled){
 			self::$timingStart = hrtime(true);
 		}
