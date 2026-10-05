@@ -37,15 +37,6 @@ use function max;
 use function zlib_encode;
 use const ZLIB_ENCODING_GZIP;
 
-/**
- * Records, for each tick, every timer call with its nesting and start/end times so the slowest ticks
- * can be displayed as a flame chart. Only the SLOWEST_TICKS_KEPT slowest ticks are retained.
- *
- * Section layout (gzip + base64): byte version, uvarint tickCount, then per tick: uvarint tick,
- * bool isGap, [uvarint previousTick], uvarint durationNs, uvarint entryCount, then per entry in
- * depth-first order: uvarint depth, uvarint recordId, uvarint startNs (delta from the previous
- * entry's start), uvarint durationNs. recordId matches RecordId in the timer lines above.
- */
 final class TimingsTimeline{
 	public const FORMAT_VERSION = 1;
 	public const SECTION_START = "###TIMELINE v" . self::FORMAT_VERSION . "###";
