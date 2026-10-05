@@ -26,14 +26,16 @@ declare(strict_types=1);
 namespace pocketmine\timings;
 
 use pocketmine\utils\BinaryStream;
+use pocketmine\utils\Utils;
 use function array_key_first;
 use function array_pop;
 use function asort;
 use function base64_encode;
 use function count;
-use function gzencode;
 use function hrtime;
 use function max;
+use function zlib_encode;
+use const ZLIB_ENCODING_GZIP;
 
 /**
  * Records, for each tick, every timer call with its nesting and start/end times so the slowest ticks
@@ -204,6 +206,6 @@ final class TimingsTimeline{
 		foreach(self::$ticks as $tick){
 			$stream->put($tick);
 		}
-		return [self::SECTION_START, base64_encode(gzencode($stream->getBuffer(), 6)), self::SECTION_END];
+		return [self::SECTION_START, base64_encode(Utils::assumeNotFalse(zlib_encode($stream->getBuffer(), ZLIB_ENCODING_GZIP), "GZIP compression failed")), self::SECTION_END];
 	}
 }
