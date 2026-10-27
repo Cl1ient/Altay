@@ -27,11 +27,20 @@ namespace pocketmine\network\mcpe\auth;
 
 use PHPUnit\Framework\TestCase;
 use pocketmine\network\mcpe\JwtUtils;
-use function openssl_pkey_new;
+use function openssl_pkey_get_private;
 use function time;
-use const OPENSSL_KEYTYPE_EC;
 
 class AuthJwtHelperTest extends TestCase{
+
+	// hmm, openssl_pkey_new() needs an openssl.cnf and the CI php binaries ship without one, so load a fixed throwaway key instead
+	private const TEST_KEY = <<<PEM
+-----BEGIN PRIVATE KEY-----
+MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDAXX9HRqC/HZSx6xEt+
+Zcr8vyzJ4Ugc0y4+q7b05keeweoaww1DrdX1Afn6v1HerwmhZANiAATExut9zvNn
+EA1qJAEll9acBXh7rtgqu+V73VJJh1XnHxYFeANhjGOGBKlkcPrpZXQJ4xZSefi+
+ZPpRT4MvjoMwqs8JpmyqZQ1Koaz7wV4b4CoiThfUBRW2ciFkfQtp8V0=
+-----END PRIVATE KEY-----
+PEM;
 
 	private static function signedToken(mixed $audience, \OpenSSLAsymmetricKey $key) : string{
 		$claims = [
@@ -53,8 +62,8 @@ class AuthJwtHelperTest extends TestCase{
 		return JwtUtils::create(["alg" => "ES384"], $claims, $key);
 	}
 
-	private static function generateKey() : \OpenSSLAsymmetricKey{
-		$key = openssl_pkey_new(["private_key_type" => OPENSSL_KEYTYPE_EC, "curve_name" => "secp384r1"]);
+	private static function loadKey() : \OpenSSLAsymmetricKey{
+		$key = openssl_pkey_get_private(self::TEST_KEY);
 		self::assertNotFalse($key);
 		return $key;
 	}
@@ -72,7 +81,7 @@ class AuthJwtHelperTest extends TestCase{
 	 * @dataProvider acceptedAudienceProvider
 	 */
 	public function testAcceptsAudience(mixed $audience) : void{
-		$key = self::generateKey();
+		$key = self::loadKey();
 		$claims = AuthJwtHelper::validateSelfSignedAuthToken(self::signedToken($audience, $key), JwtUtils::emitDerPublicKey($key), AuthJwtHelper::MOJANG_AUDIENCE);
 		self::assertSame($audience, $claims->aud);
 	}
@@ -92,7 +101,7 @@ class AuthJwtHelperTest extends TestCase{
 	 * @dataProvider rejectedAudienceProvider
 	 */
 	public function testRejectsAudience(mixed $audience) : void{
-		$key = self::generateKey();
+		$key = self::loadKey();
 		$this->expectException(VerifyLoginException::class);
 		$this->expectExceptionMessage("Invalid JWT audience");
 		AuthJwtHelper::validateSelfSignedAuthToken(self::signedToken($audience, $key), JwtUtils::emitDerPublicKey($key), AuthJwtHelper::MOJANG_AUDIENCE);
