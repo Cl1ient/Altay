@@ -67,6 +67,7 @@ use altay\network\nethernet\NetherNetTransport;
 use pocketmine\network\mcpe\transport\NetherNetTransportFactory;
 use pocketmine\network\mcpe\transport\ThreadedTransport;
 use pocketmine\network\mcpe\transport\TransportNetworkInterface;
+use pocketmine\network\mcpe\raklib\RakLibInterface;
 use pocketmine\network\mcpe\StandardEntityEventBroadcaster;
 use pocketmine\network\mcpe\StandardPacketBroadcaster;
 use pocketmine\network\Network;
@@ -1354,7 +1355,7 @@ class Server {
 	/**
 	 * The one UDP port every player's media shares, or null to give each player their own.
 	 */
-	private function getNetherNetUdpPort(int $serverPort, bool $useQuery) : ?int{
+	private function getNetherNetUdpPort(int $serverPort, bool $useQuery, bool $useRakNet) : ?int{
 		$configured = $this->configGroup->getPropertyInt(Yml::NETWORK_NETHERNET_UDP_PORT, 0);
 		if($configured === 0){
 			return null;
@@ -1363,9 +1364,11 @@ class Server {
 			$this->logger->warning("Ignoring " . Yml::NETWORK_NETHERNET_UDP_PORT . ", it must be between 1 and 65535");
 			return null;
 		}
-		if($configured === $serverPort && $useQuery){
-			//query owns the UDP side of the server port, and binding it twice would take the whole network down
-			$this->logger->warning("Ignoring " . Yml::NETWORK_NETHERNET_UDP_PORT . ", query already listens on udp/$serverPort. Pick another port or turn enable-query off");
+		if($configured === $serverPort && ($useQuery || $useRakNet)){
+			//RakLib and query both own the UDP side of the server port, and binding it twice would take the whole
+			//network down
+			$owner = $useRakNet ? "RakNet" : "query";
+			$this->logger->warning("Ignoring " . Yml::NETWORK_NETHERNET_UDP_PORT . ", $owner already listens on udp/$serverPort. Pick another port, or set network.transport to \"nethernet\"");
 			return null;
 		}
 		return $configured;
@@ -1420,9 +1423,36 @@ class Server {
 		TypeConverter $typeConverter
 	) : bool{
 		$prettyIp = $ipV6 ? "[$ip]" : $ip;
+		//Not every client speaks NetherNet, so RakNet has to stay available for them. The two transports listen on
+		//different sockets and can run side by side; "both" is the default for that reason.
+		$transportMode = strtolower($this->configGroup->getPropertyString(Yml::NETWORK_TRANSPORT, "both"));
+		if($transportMode !== "raknet" && $transportMode !== "nethernet" && $transportMode !== "both"){
+			$this->logger->warning("Unknown network transport \"$transportMode\", defaulting to \"both\"");
+			$transportMode = "both";
+		}
+		$useRakNet = $transportMode === "raknet" || $transportMode === "both";
+		$useNetherNet = $transportMode === "nethernet" || $transportMode === "both";
+
+		$rakLibRegistered = false;
+		try{
+			if($useRakNet){
+				$rakLibRegistered = $this->network->registerInterface(new RakLibInterface($this, $ip, $port, $ipV6, $packetBroadcaster, $entityEventBroadcaster, $typeConverter));
+				if($rakLibRegistered){
+					$this->logger->info($this->language->translate(KnownTranslationFactory::pocketmine_server_networkStart($prettyIp, (string) $port)));
+				}
+			}
+		}catch(NetworkInterfaceStartException $e){
+			$this->logger->emergency($this->language->translate(KnownTranslationFactory::pocketmine_server_networkStartFailed(
+				$ip,
+				(string) $port,
+				$e->getMessage()
+			)));
+			return false;
+		}
+
 		try{
 			//NetherNet discovery uses a single broadcast socket, so the IPv6 pass has no transport to start
-			if(!$ipV6){
+			if($useNetherNet && !$ipV6){
 				[$requireIdentity, $requireEndpointIdentity] = $this->getNetherNetIdentityPolicy();
 				//the Servers tab asks for the MOTD and posts its offer over HTTP, and it does that on
 				//the server port unless the operator moved the endpoint somewhere else
@@ -1459,7 +1489,7 @@ class Server {
 						$this->getNetherNetLimit(Yml::NETWORK_NETHERNET_MAX_NEGOTIATIONS_PER_ADDRESS, 32),
 						$this->configGroup->getPropertyBool(Yml::NETWORK_NETHERNET_VERBOSE_LOGGING, false),
 						$this->getNetherNetLimit(Yml::NETWORK_NETHERNET_HANDSHAKE_TIMEOUT, NetherNetTransport::DEFAULT_HANDSHAKE_TIMEOUT),
-						$this->getNetherNetUdpPort($port, $useQuery)
+						$this->getNetherNetUdpPort($port, $useQuery, $useRakNet)
 					),
 					$this->tickSleeper
 				);
@@ -1476,7 +1506,11 @@ class Server {
 			return false;
 		}
 		if($useQuery){
-			$this->network->registerInterface(new DedicatedQueryNetworkInterface($ip, $port, $ipV6, new \PrefixedLogger($this->logger, "Dedicated Query Interface")));
+			if(!$rakLibRegistered){
+				//RakLib would normally handle the transport for Query packets
+				//if it's not registered we need to make sure Query still works
+				$this->network->registerInterface(new DedicatedQueryNetworkInterface($ip, $port, $ipV6, new \PrefixedLogger($this->logger, "Dedicated Query Interface")));
+			}
 			$this->logger->info($this->language->translate(KnownTranslationFactory::pocketmine_server_query_running($prettyIp, (string) $port)));
 		}
 		return true;

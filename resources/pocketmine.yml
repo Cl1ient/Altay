@@ -64,6 +64,10 @@ memory:
     chunk-radius: 4
 
 network:
+  # Which transports the server listens on: raknet, nethernet, or both.
+  # Not every client speaks NetherNet, so "both" keeps a RakNet listener on the server port for them
+  # while NetherNet serves the Servers tab. The two run side by side on different sockets.
+  transport: both
   #Settings for the NetherNet transport.
   nethernet:
     #Name shown to players the first time their client is asked to trust this server's identity.
@@ -132,6 +136,9 @@ network:
   async-compression-threshold: 10000
   #Experimental. Use UPnP to automatically port forward
   upnp-forwarding: false
+  #Maximum size in bytes of packets sent over the network (default 1492 bytes). Packets larger than this will be
+  #fragmented or split into smaller parts. Clients can request MTU sizes up to but not more than this number.
+  max-mtu-size: 1492
 
 debug:
   #If > 1, it will show debug messages in the console

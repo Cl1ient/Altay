@@ -89,6 +89,7 @@ final class YmlServerProperties{
 	public const NETWORK_ASYNC_COMPRESSION_THRESHOLD = 'network.async-compression-threshold';
 	public const NETWORK_BATCH_THRESHOLD = 'network.batch-threshold';
 	public const NETWORK_COMPRESSION_LEVEL = 'network.compression-level';
+	public const NETWORK_MAX_MTU_SIZE = 'network.max-mtu-size';
 	public const NETWORK_NETHERNET = 'network.nethernet';
 	public const NETWORK_NETHERNET_ADVERTISE_ADDRESSES = 'network.nethernet.advertise-addresses';
 	public const NETWORK_NETHERNET_HANDSHAKE_TIMEOUT = 'network.nethernet.handshake-timeout';
@@ -107,6 +108,7 @@ final class YmlServerProperties{
 	public const NETWORK_NETHERNET_UDP_PORT = 'network.nethernet.udp-port';
 	public const NETWORK_NETHERNET_UDP_PORT_RANGE = 'network.nethernet.udp-port-range';
 	public const NETWORK_NETHERNET_VERBOSE_LOGGING = 'network.nethernet.verbose-logging';
+	public const NETWORK_TRANSPORT = 'network.transport';
 	public const NETWORK_UPNP_FORWARDING = 'network.upnp-forwarding';
 	public const PLAYER = 'player';
 	public const PLAYER_SAVE_PLAYER_DATA = 'player.save-player-data';
