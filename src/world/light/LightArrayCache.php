@@ -32,7 +32,6 @@ use pocketmine\world\format\Chunk;
 use pocketmine\world\format\io\exception\CorruptedWorldException;
 use pocketmine\world\format\LightArray;
 use pocketmine\world\format\SubChunk;
-use function array_map;
 use function array_values;
 use function chr;
 use function count;
@@ -80,26 +79,32 @@ final class LightArrayCache{
 		try{
 			$stream = new BinaryStream($data);
 			$heights = unpack("s*", $stream->get(self::HEIGHT_MAP_BYTES));
-			$blockLight = self::readArrays($stream);
-			$skyLight = self::readArrays($stream);
+			if($heights === false){
+				return false;
+			}
+			$restored = 0;
+			foreach(self::readArrays($stream) as $y => $array){
+				if(!isset($subChunks[$y])){
+					return false;
+				}
+				$subChunks[$y]->setBlockLightArray($array);
+				$restored++;
+			}
+			foreach(self::readArrays($stream) as $y => $array){
+				if(!isset($subChunks[$y])){
+					return false;
+				}
+				$subChunks[$y]->setBlockSkyLightArray($array);
+				$restored++;
+			}
 		}catch(BinaryDataException){
 			return false;
 		}
-		if($heights === false || count($blockLight) !== count($subChunks) || count($skyLight) !== count($subChunks)){
+		if($restored !== 2 * count($subChunks)){
 			return false;
 		}
 		/** @phpstan-var non-empty-list<int> $heightMap */
 		$heightMap = array_values($heights);
-
-		foreach($subChunks as $y => $subChunk){
-			if(!isset($blockLight[$y], $skyLight[$y])){
-				return false;
-			}
-		}
-		foreach($subChunks as $y => $subChunk){
-			$subChunk->setBlockLightArray($blockLight[$y]);
-			$subChunk->setBlockSkyLightArray($skyLight[$y]);
-		}
 		$chunk->setHeightMapArray($heightMap);
 		$chunk->setLightPopulated(true);
 
@@ -121,8 +126,8 @@ final class LightArrayCache{
 		$this->db->put(
 			$key,
 			pack("s*", ...$chunk->getHeightMapArray()) .
-			self::writeArrays(array_map(fn(SubChunk $subChunk) => $subChunk->getBlockLightArray(), $subChunks)) .
-			self::writeArrays(array_map(fn(SubChunk $subChunk) => $subChunk->getBlockSkyLightArray(), $subChunks))
+			self::writeArrays(count($subChunks), self::blockLightOf($subChunks)) .
+			self::writeArrays(count($subChunks), self::skyLightOf($subChunks))
 		);
 	}
 
@@ -131,26 +136,49 @@ final class LightArrayCache{
 	}
 
 	/**
-	 * @return LightArray[]
-	 * @phpstan-return array<int, LightArray>
+	 * @param SubChunk[] $subChunks
+	 * @phpstan-param array<int, SubChunk> $subChunks
+	 *
+	 * @return \Generator|LightArray[]
+	 * @phpstan-return \Generator<int, LightArray, void, void>
 	 */
-	private static function readArrays(BinaryStream $stream) : array{
-		$arrays = [];
-		for($i = 0, $count = $stream->getByte(); $i < $count; $i++){
-			$y = Binary::signByte($stream->getByte());
-			$level = $stream->getByte();
-			$arrays[$y] = $level === self::FULL_ARRAY ? new LightArray($stream->get(self::ARRAY_SIZE)) : LightArray::fill($level);
+	private static function blockLightOf(array $subChunks) : \Generator{
+		foreach($subChunks as $y => $subChunk){
+			yield $y => $subChunk->getBlockLightArray();
 		}
-
-		return $arrays;
 	}
 
 	/**
-	 * @param LightArray[] $arrays
-	 * @phpstan-param array<int, LightArray> $arrays
+	 * @param SubChunk[] $subChunks
+	 * @phpstan-param array<int, SubChunk> $subChunks
+	 *
+	 * @return \Generator|LightArray[]
+	 * @phpstan-return \Generator<int, LightArray, void, void>
 	 */
-	private static function writeArrays(array $arrays) : string{
-		$result = chr(count($arrays));
+	private static function skyLightOf(array $subChunks) : \Generator{
+		foreach($subChunks as $y => $subChunk){
+			yield $y => $subChunk->getBlockSkyLightArray();
+		}
+	}
+
+	/**
+	 * @return \Generator|LightArray[]
+	 * @phpstan-return \Generator<int, LightArray, void, void>
+	 */
+	private static function readArrays(BinaryStream $stream) : \Generator{
+		for($i = 0, $count = $stream->getByte(); $i < $count; $i++){
+			$y = Binary::signByte($stream->getByte());
+			$level = $stream->getByte();
+			yield $y => $level === self::FULL_ARRAY ? new LightArray($stream->get(self::ARRAY_SIZE)) : LightArray::fill($level);
+		}
+	}
+
+	/**
+	 * @param \Generator|LightArray[] $arrays
+	 * @phpstan-param \Generator<int, LightArray, void, void> $arrays
+	 */
+	private static function writeArrays(int $count, \Generator $arrays) : string{
+		$result = chr($count);
 		foreach($arrays as $y => $array){
 			$level = $array->get(0, 0, 0);
 			$result .= chr($y & 0xff) . ($array->isUniform($level) ? chr($level) : chr(self::FULL_ARRAY) . $array->getData());
