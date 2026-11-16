@@ -85,6 +85,23 @@ final class LightArrayCacheTest extends TestCase{
 		self::assertSame(15, $restored->getSubChunk(19)->getBlockSkyLightArray()->get(3, 9, 11));
 	}
 
+	public function testChangedLightIsWrittenAgain() : void{
+		$chunk = self::chunk();
+		$chunk->setLightPopulated(true);
+		$this->cache->store(2, 2, $chunk);
+
+		$loaded = self::chunk();
+		self::assertTrue($this->cache->restore(2, 2, $loaded));
+		$this->cache->store(2, 2, $loaded);
+		$loaded->getSubChunk(3)->setBlockLightArray(LightArray::fill(9));
+		$this->cache->store(2, 2, $loaded);
+		$this->cache->forget(2, 2);
+
+		$again = self::chunk();
+		self::assertTrue($this->cache->restore(2, 2, $again));
+		self::assertTrue($again->getSubChunk(3)->getBlockLightArray()->isUniform(9));
+	}
+
 	public function testUnknownChunkIsLeftUntouched() : void{
 		$chunk = self::chunk();
 		self::assertFalse($this->cache->restore(1, 1, $chunk));

@@ -35,6 +35,7 @@ use pocketmine\world\format\SubChunk;
 use function array_values;
 use function chr;
 use function count;
+use function hash;
 use function pack;
 use function unpack;
 use const LEVELDB_ZLIB_RAW_COMPRESSION;
@@ -50,7 +51,18 @@ final class LightArrayCache{
 	private const ARRAY_SIZE = 2048;
 	private const HEIGHT_MAP_BYTES = 512;
 
+	private const WRITE_BUFFER_SIZE = 16 * 1024 * 1024;
+	private const BLOCK_CACHE_SIZE = 16 * 1024 * 1024;
+
 	private \LevelDB $db;
+
+	/**
+	 * Hash of what the database holds for each loaded chunk, so that unchanged light is not written again.
+	 *
+	 * @var string[]
+	 * @phpstan-var array<string, string>
+	 */
+	private array $storedHashes = [];
 
 	/**
 	 * @throws CorruptedWorldException
@@ -59,7 +71,9 @@ final class LightArrayCache{
 		try{
 			$this->db = new \LevelDB($path, [
 				"compression" => LEVELDB_ZLIB_RAW_COMPRESSION,
-				"block_size" => 16 * 1024
+				"block_size" => 16 * 1024,
+				"write_buffer_size" => self::WRITE_BUFFER_SIZE,
+				"block_cache_size" => self::BLOCK_CACHE_SIZE
 			]);
 		}catch(\LevelDBException $e){
 			throw new CorruptedWorldException("Failed to open light cache: " . $e->getMessage(), 0, $e);
@@ -70,10 +84,12 @@ final class LightArrayCache{
 	 * Restores the light of a freshly loaded chunk. Returns whether the chunk is now light populated.
 	 */
 	public function restore(int $chunkX, int $chunkZ, Chunk $chunk) : bool{
-		$data = $this->db->get(self::key($chunkX, $chunkZ));
+		$key = self::key($chunkX, $chunkZ);
+		$data = $this->db->get($key);
 		if($data === false){
 			return false;
 		}
+		$this->storedHashes[$key] = self::hash($data);
 
 		$subChunks = $chunk->getSubChunks();
 		try{
@@ -119,16 +135,26 @@ final class LightArrayCache{
 		$key = self::key($chunkX, $chunkZ);
 		if($chunk->isLightPopulated() !== true){
 			$this->db->delete($key);
+			unset($this->storedHashes[$key]);
 			return;
 		}
 
 		$subChunks = $chunk->getSubChunks();
-		$this->db->put(
-			$key,
-			pack("s*", ...$chunk->getHeightMapArray()) .
+		$data = pack("s*", ...$chunk->getHeightMapArray()) .
 			self::writeArrays(count($subChunks), self::blockLightOf($subChunks)) .
-			self::writeArrays(count($subChunks), self::skyLightOf($subChunks))
-		);
+			self::writeArrays(count($subChunks), self::skyLightOf($subChunks));
+		$hash = self::hash($data);
+		if(($this->storedHashes[$key] ?? null) !== $hash){
+			$this->db->put($key, $data);
+			$this->storedHashes[$key] = $hash;
+		}
+	}
+
+	/**
+	 * Called once a chunk has left memory: nothing needs to be remembered about it until it is loaded again.
+	 */
+	public function forget(int $chunkX, int $chunkZ) : void{
+		unset($this->storedHashes[self::key($chunkX, $chunkZ)]);
 	}
 
 	public function close() : void{
@@ -185,6 +211,10 @@ final class LightArrayCache{
 		}
 
 		return $result;
+	}
+
+	private static function hash(string $data) : string{
+		return hash("xxh128", $data, true);
 	}
 
 	private static function key(int $chunkX, int $chunkZ) : string{

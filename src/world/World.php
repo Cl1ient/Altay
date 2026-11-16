@@ -3349,6 +3349,7 @@ class World implements ChunkManager{
 			}
 
 			$chunk->onUnload();
+			$this->lightCache->forget($x, $z);
 		}
 
 		unset($this->chunks[$chunkHash]);
