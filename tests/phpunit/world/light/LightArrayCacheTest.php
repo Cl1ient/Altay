@@ -173,6 +173,28 @@ final class LightArrayCacheTest extends TestCase{
 		self::assertSame([\LogLevel::WARNING, \LogLevel::ERROR], $this->logger->levels);
 	}
 
+	public function testUniformLightStaysShared() : void{
+		$stored = self::chunk();
+		$stored->getSubChunk(2)->setUniformBlockLight(7);
+		$stored->getSubChunk(3)->setUniformBlockSkyLight(15);
+		$stored->getSubChunk(4)->getBlockLightArray()->set(1, 2, 3, 9);
+		$stored->setLightPopulated(true);
+		$this->cache->store(6, 6, $stored, LightArrayCache::fingerprint($stored));
+
+		//storing reads the levels: the sub chunks must not have been given arrays of their own
+		self::assertSame(7, $stored->getSubChunk(2)->getUniformBlockLight());
+		self::assertSame(15, $stored->getSubChunk(3)->getUniformBlockSkyLight());
+
+		$restored = self::chunk();
+		self::assertTrue($this->cache->restore(6, 6, $restored, LightArrayCache::fingerprint($restored)));
+		self::assertSame(7, $restored->getSubChunk(2)->getUniformBlockLight());
+		self::assertSame(15, $restored->getSubChunk(3)->getUniformBlockSkyLight());
+		self::assertSame(0, $restored->getSubChunk(0)->getUniformBlockLight());
+		self::assertNull($restored->getSubChunk(4)->getUniformBlockLight());
+		self::assertSame(9, $restored->getSubChunk(4)->getBlockLightAt(1, 2, 3));
+		self::assertSame(7, $restored->getSubChunk(2)->getBlockLightAt(5, 5, 5));
+	}
+
 	public function testUnknownChunkIsLeftUntouched() : void{
 		$chunk = self::chunk();
 		self::assertFalse($this->cache->restore(1, 1, $chunk, LightArrayCache::fingerprint($chunk)));

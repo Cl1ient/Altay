@@ -156,14 +156,22 @@ final class LightArrayCache{
 				if(!isset($subChunks[$y])){
 					return false;
 				}
-				$subChunks[$y]->setBlockLightArray($array);
+				if($array instanceof LightArray){
+					$subChunks[$y]->setBlockLightArray($array);
+				}else{
+					$subChunks[$y]->setUniformBlockLight($array);
+				}
 				$restored++;
 			}
 			foreach(self::readArrays($stream) as $y => $array){
 				if(!isset($subChunks[$y])){
 					return false;
 				}
-				$subChunks[$y]->setBlockSkyLightArray($array);
+				if($array instanceof LightArray){
+					$subChunks[$y]->setBlockSkyLightArray($array);
+				}else{
+					$subChunks[$y]->setUniformBlockSkyLight($array);
+				}
 				$restored++;
 			}
 		}catch(BinaryDataException){
@@ -233,52 +241,66 @@ final class LightArrayCache{
 	}
 
 	/**
+	 * Yields the block light of each sub chunk: its level when it is uniform, its array otherwise. A sub chunk that
+	 * shares a uniform array is read through its level, so that storing it does not give it a private copy.
+	 *
 	 * @param SubChunk[] $subChunks
 	 * @phpstan-param array<int, SubChunk> $subChunks
 	 *
-	 * @return \Generator|LightArray[]
-	 * @phpstan-return \Generator<int, LightArray, void, void>
+	 * @return \Generator|LightArray[]|int[]
+	 * @phpstan-return \Generator<int, LightArray|int, void, void>
 	 */
 	private static function blockLightOf(array $subChunks) : \Generator{
 		foreach($subChunks as $y => $subChunk){
-			yield $y => $subChunk->getBlockLightArray();
+			yield $y => $subChunk->getUniformBlockLight() ?? $subChunk->getBlockLightArray();
 		}
 	}
 
 	/**
+	 * Same as blockLightOf(), for sky light.
+	 *
 	 * @param SubChunk[] $subChunks
 	 * @phpstan-param array<int, SubChunk> $subChunks
 	 *
-	 * @return \Generator|LightArray[]
-	 * @phpstan-return \Generator<int, LightArray, void, void>
+	 * @return \Generator|LightArray[]|int[]
+	 * @phpstan-return \Generator<int, LightArray|int, void, void>
 	 */
 	private static function skyLightOf(array $subChunks) : \Generator{
 		foreach($subChunks as $y => $subChunk){
-			yield $y => $subChunk->getBlockSkyLightArray();
+			yield $y => $subChunk->getUniformBlockSkyLight() ?? $subChunk->getBlockSkyLightArray();
 		}
 	}
 
 	/**
-	 * @return \Generator|LightArray[]
-	 * @phpstan-return \Generator<int, LightArray, void, void>
+	 * Yields what was stored for each sub chunk: a level for uniform light, an array otherwise.
+	 *
+	 * @return \Generator|LightArray[]|int[]
+	 * @phpstan-return \Generator<int, LightArray|int, void, void>
 	 */
 	private static function readArrays(BinaryStream $stream) : \Generator{
 		for($i = 0, $count = $stream->getByte(); $i < $count; $i++){
 			$y = Binary::signByte($stream->getByte());
 			$level = $stream->getByte();
-			yield $y => $level === self::FULL_ARRAY ? new LightArray($stream->get(self::ARRAY_SIZE)) : LightArray::fill($level);
+			if($level > self::FULL_ARRAY){
+				throw new BinaryDataException("Invalid light level $level");
+			}
+			yield $y => $level === self::FULL_ARRAY ? new LightArray($stream->get(self::ARRAY_SIZE)) : $level;
 		}
 	}
 
 	/**
-	 * @param \Generator|LightArray[] $arrays
-	 * @phpstan-param \Generator<int, LightArray, void, void> $arrays
+	 * @param \Generator|LightArray[]|int[] $arrays
+	 * @phpstan-param \Generator<int, LightArray|int, void, void> $arrays
 	 */
 	private static function writeArrays(int $count, \Generator $arrays) : string{
 		$result = chr($count);
-		foreach($arrays as $y => $array){
-			$level = $array->get(0, 0, 0);
-			$result .= chr($y & 0xff) . ($array->isUniform($level) ? chr($level) : chr(self::FULL_ARRAY) . $array->getData());
+		foreach($arrays as $y => $light){
+			if($light instanceof LightArray){
+				$level = $light->get(0, 0, 0);
+				$result .= chr($y & 0xff) . ($light->isUniform($level) ? chr($level) : chr(self::FULL_ARRAY) . $light->getData());
+			}else{
+				$result .= chr($y & 0xff) . chr($light);
+			}
 		}
 
 		return $result;
