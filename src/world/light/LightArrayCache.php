@@ -28,15 +28,21 @@ namespace pocketmine\world\light;
 use pocketmine\utils\Binary;
 use pocketmine\utils\BinaryDataException;
 use pocketmine\utils\BinaryStream;
+use pocketmine\utils\Filesystem;
 use pocketmine\world\format\Chunk;
-use pocketmine\world\format\io\exception\CorruptedWorldException;
 use pocketmine\world\format\LightArray;
 use pocketmine\world\format\SubChunk;
 use function array_values;
 use function chr;
 use function count;
 use function hash;
+use function hash_final;
+use function hash_init;
+use function hash_update;
+use function is_dir;
 use function pack;
+use function strlen;
+use function substr;
 use function unpack;
 use const LEVELDB_ZLIB_RAW_COMPRESSION;
 
@@ -45,8 +51,19 @@ use const LEVELDB_ZLIB_RAW_COMPRESSION;
  * light population. Terrain providers do not store light: without this, every chunk load costs a LightPopulationTask.
  *
  * The heightmap is stored with the light because light population is also what computes it.
+ *
+ * Every entry carries a fingerprint of the terrain it was computed from, and is only restored onto that exact terrain:
+ * a world edited by another tool, restored from a backup or regenerated falls back to light population.
+ *
+ * The fingerprint identifies the terrain as the world provider holds it, not as it sits in memory, where a chunk can be
+ * repacked without being written again. It is therefore taken when a chunk is loaded or right after it is saved (see
+ * fingerprint()), and handed back here.
  */
 final class LightArrayCache{
+	private const ENTRY_VERSION = 2;
+	private const FINGERPRINT_SIZE = 16;
+	private const HEADER_SIZE = 1 + self::FINGERPRINT_SIZE;
+
 	private const FULL_ARRAY = 16;
 	private const ARRAY_SIZE = 2048;
 	private const HEIGHT_MAP_BYTES = 512;
@@ -57,7 +74,8 @@ final class LightArrayCache{
 	private \LevelDB $db;
 
 	/**
-	 * Hash of what the database holds for each loaded chunk, so that unchanged light is not written again.
+	 * Hash of the entry the database holds for each loaded chunk, so that unchanged light is not written again. A
+	 * loaded chunk has an entry here exactly when the database holds a valid one for it.
 	 *
 	 * @var string[]
 	 * @phpstan-var array<string, string>
@@ -65,35 +83,70 @@ final class LightArrayCache{
 	private array $storedHashes = [];
 
 	/**
-	 * @throws CorruptedWorldException
+	 * @throws \LevelDBException
 	 */
-	public function __construct(string $path){
+	private function __construct(string $path){
+		$this->db = new \LevelDB($path, [
+			"compression" => LEVELDB_ZLIB_RAW_COMPRESSION,
+			"block_size" => 16 * 1024,
+			"write_buffer_size" => self::WRITE_BUFFER_SIZE,
+			"block_cache_size" => self::BLOCK_CACHE_SIZE
+		]);
+	}
+
+	/**
+	 * Opens the cache of a world. The cache only holds data that can be computed again, so one that cannot be opened
+	 * (left corrupt by a power loss, for instance) is wiped and started over rather than keeping the world from
+	 * loading. Returns null when even that fails: the world then runs without a cache.
+	 */
+	public static function open(string $path, \Logger $logger) : ?self{
 		try{
-			$this->db = new \LevelDB($path, [
-				"compression" => LEVELDB_ZLIB_RAW_COMPRESSION,
-				"block_size" => 16 * 1024,
-				"write_buffer_size" => self::WRITE_BUFFER_SIZE,
-				"block_cache_size" => self::BLOCK_CACHE_SIZE
-			]);
+			return new self($path);
 		}catch(\LevelDBException $e){
-			throw new CorruptedWorldException("Failed to open light cache: " . $e->getMessage(), 0, $e);
+			$logger->warning("Light cache could not be opened and will be rebuilt: " . $e->getMessage());
+		}
+		try{
+			if(is_dir($path)){
+				Filesystem::recursiveUnlink($path);
+			}
+			return new self($path);
+		}catch(\LevelDBException | \RuntimeException $e){
+			$logger->error("Light cache is unavailable, light will be computed on every chunk load: " . $e->getMessage());
+			return null;
 		}
 	}
 
 	/**
-	 * Restores the light of a freshly loaded chunk. Returns whether the chunk is now light populated.
+	 * Restores the light of a freshly loaded chunk. Returns whether the chunk is now light populated. An entry that
+	 * does not belong to this terrain, or cannot be read, is removed.
+	 *
+	 * @param string $terrain fingerprint of the chunk as it was just loaded
 	 */
-	public function restore(int $chunkX, int $chunkZ, Chunk $chunk) : bool{
+	public function restore(int $chunkX, int $chunkZ, Chunk $chunk, string $terrain) : bool{
 		$key = self::key($chunkX, $chunkZ);
 		$data = $this->db->get($key);
 		if($data === false){
 			return false;
 		}
+		if(
+			strlen($data) < self::HEADER_SIZE ||
+			$data[0] !== chr(self::ENTRY_VERSION) ||
+			substr($data, 1, self::FINGERPRINT_SIZE) !== $terrain ||
+			!$this->apply($data, $chunk)
+		){
+			$this->db->delete($key);
+			return false;
+		}
 		$this->storedHashes[$key] = self::hash($data);
 
+		return true;
+	}
+
+	private function apply(string $data, Chunk $chunk) : bool{
 		$subChunks = $chunk->getSubChunks();
 		try{
 			$stream = new BinaryStream($data);
+			$stream->get(self::HEADER_SIZE);
 			$heights = unpack("s*", $stream->get(self::HEIGHT_MAP_BYTES));
 			if($heights === false){
 				return false;
@@ -128,19 +181,21 @@ final class LightArrayCache{
 	}
 
 	/**
-	 * Stores the light of a chunk. A chunk whose light is not computed has its entry dropped instead: what was stored
-	 * for it no longer matches its terrain.
+	 * Stores the light of a chunk, tied to its terrain. A chunk whose light is not computed has its entry dropped
+	 * instead.
+	 *
+	 * @param string $terrain fingerprint of the chunk as the world provider holds it
 	 */
-	public function store(int $chunkX, int $chunkZ, Chunk $chunk) : void{
-		$key = self::key($chunkX, $chunkZ);
+	public function store(int $chunkX, int $chunkZ, Chunk $chunk, string $terrain) : void{
 		if($chunk->isLightPopulated() !== true){
-			$this->db->delete($key);
-			unset($this->storedHashes[$key]);
+			$this->drop($chunkX, $chunkZ);
 			return;
 		}
 
+		$key = self::key($chunkX, $chunkZ);
 		$subChunks = $chunk->getSubChunks();
-		$data = pack("s*", ...$chunk->getHeightMapArray()) .
+		$data = chr(self::ENTRY_VERSION) . $terrain .
+			pack("s*", ...$chunk->getHeightMapArray()) .
 			self::writeArrays(count($subChunks), self::blockLightOf($subChunks)) .
 			self::writeArrays(count($subChunks), self::skyLightOf($subChunks));
 		$hash = self::hash($data);
@@ -148,6 +203,22 @@ final class LightArrayCache{
 			$this->db->put($key, $data);
 			$this->storedHashes[$key] = $hash;
 		}
+	}
+
+	/**
+	 * Removes the entry of a chunk, loaded or not.
+	 */
+	public function drop(int $chunkX, int $chunkZ) : void{
+		$key = self::key($chunkX, $chunkZ);
+		$this->db->delete($key);
+		unset($this->storedHashes[$key]);
+	}
+
+	/**
+	 * Returns whether the database holds a valid entry for a loaded chunk.
+	 */
+	public function has(int $chunkX, int $chunkZ) : bool{
+		return isset($this->storedHashes[self::key($chunkX, $chunkZ)]);
 	}
 
 	/**
@@ -211,6 +282,27 @@ final class LightArrayCache{
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Identifies the block data of a chunk in its current form. This only describes what the world provider holds when
+	 * the chunk has just been loaded, or just been saved with its blocks. Light only depends on blocks, so biomes are
+	 * left out.
+	 */
+	public static function fingerprint(Chunk $chunk) : string{
+		$context = hash_init("xxh128");
+		foreach($chunk->getSubChunks() as $y => $subChunk){
+			$layers = $subChunk->getBlockLayers();
+			hash_update($context, pack("cVC", $y, $subChunk->getEmptyBlockId(), count($layers)));
+			foreach($layers as $layer){
+				$palette = $layer->getPalette();
+				hash_update($context, pack("CV", $layer->getBitsPerBlock(), count($palette)));
+				hash_update($context, $layer->getWordArray());
+				hash_update($context, pack("V*", ...$palette));
+			}
+		}
+
+		return hash_final($context, true);
 	}
 
 	private static function hash(string $data) : string{

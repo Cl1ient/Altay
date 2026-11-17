@@ -33,9 +33,13 @@ use pocketmine\world\format\PalettedBlockArray;
 use pocketmine\world\format\SubChunk;
 use Symfony\Component\Filesystem\Path;
 use function array_fill;
+use function file_put_contents;
+use function is_string;
 use function mkdir;
+use function scandir;
 use function sys_get_temp_dir;
 use function uniqid;
+use function unlink;
 
 final class LightArrayCacheTest extends TestCase{
 	private const MIN_SUB_CHUNK = -4;
@@ -43,11 +47,17 @@ final class LightArrayCacheTest extends TestCase{
 
 	private string $path;
 	private LightArrayCache $cache;
+	private RecordingLogger $logger;
 
 	protected function setUp() : void{
 		$this->path = Path::join(sys_get_temp_dir(), uniqid("light-cache-", true));
 		mkdir($this->path);
-		$this->cache = new LightArrayCache(Path::join($this->path, "light_cache"));
+		$this->logger = new RecordingLogger();
+		$this->cache = $this->open("light_cache") ?? throw new \LogicException("Cache should open in an empty directory");
+	}
+
+	private function open(string $name) : ?LightArrayCache{
+		return LightArrayCache::open(Path::join($this->path, $name), $this->logger);
 	}
 
 	protected function tearDown() : void{
@@ -73,10 +83,10 @@ final class LightArrayCacheTest extends TestCase{
 		$heightMap = [-64, ...array_fill(0, 254, 70), 319];
 		$stored->setHeightMapArray($heightMap);
 		$stored->setLightPopulated(true);
-		$this->cache->store(5, -3, $stored);
+		$this->cache->store(5, -3, $stored, LightArrayCache::fingerprint($stored));
 
 		$restored = self::chunk();
-		self::assertTrue($this->cache->restore(5, -3, $restored));
+		self::assertTrue($this->cache->restore(5, -3, $restored, LightArrayCache::fingerprint($restored)));
 		self::assertTrue($restored->isLightPopulated());
 		self::assertSame($heightMap, $restored->getHeightMapArray());
 		self::assertTrue($restored->getSubChunk(-4)->getBlockLightArray()->isUniform(7));
@@ -88,34 +98,104 @@ final class LightArrayCacheTest extends TestCase{
 	public function testChangedLightIsWrittenAgain() : void{
 		$chunk = self::chunk();
 		$chunk->setLightPopulated(true);
-		$this->cache->store(2, 2, $chunk);
+		$this->cache->store(2, 2, $chunk, LightArrayCache::fingerprint($chunk));
 
 		$loaded = self::chunk();
-		self::assertTrue($this->cache->restore(2, 2, $loaded));
-		$this->cache->store(2, 2, $loaded);
+		self::assertTrue($this->cache->restore(2, 2, $loaded, LightArrayCache::fingerprint($loaded)));
+		$this->cache->store(2, 2, $loaded, LightArrayCache::fingerprint($loaded));
 		$loaded->getSubChunk(3)->setBlockLightArray(LightArray::fill(9));
-		$this->cache->store(2, 2, $loaded);
+		$this->cache->store(2, 2, $loaded, LightArrayCache::fingerprint($loaded));
 		$this->cache->forget(2, 2);
 
 		$again = self::chunk();
-		self::assertTrue($this->cache->restore(2, 2, $again));
+		self::assertTrue($this->cache->restore(2, 2, $again, LightArrayCache::fingerprint($again)));
 		self::assertTrue($again->getSubChunk(3)->getBlockLightArray()->isUniform(9));
+	}
+
+	public function testLightIsNotRestoredOntoDifferentTerrain() : void{
+		$stored = self::chunk();
+		$stored->setBlockStateId(1, 64, 1, 5);
+		$stored->setLightPopulated(true);
+		$this->cache->store(4, 4, $stored, LightArrayCache::fingerprint($stored));
+		self::assertTrue($this->cache->has(4, 4));
+
+		$edited = self::chunk();
+		$edited->setBlockStateId(1, 64, 1, 5);
+		$edited->setBlockStateId(2, 64, 1, 9);
+		self::assertFalse($this->cache->restore(4, 4, $edited, LightArrayCache::fingerprint($edited)));
+		self::assertFalse($edited->isLightPopulated());
+
+		//the entry no longer described this terrain: it is gone, even for the terrain it was computed from
+		$same = self::chunk();
+		$same->setBlockStateId(1, 64, 1, 5);
+		self::assertFalse($this->cache->restore(4, 4, $same, LightArrayCache::fingerprint($same)));
+	}
+
+	public function testSameTerrainIsRestored() : void{
+		$stored = self::chunk();
+		$stored->setBlockStateId(1, 64, 1, 5);
+		$stored->setLightPopulated(true);
+		$this->cache->store(4, 4, $stored, LightArrayCache::fingerprint($stored));
+
+		$same = self::chunk();
+		$same->setBlockStateId(1, 64, 1, 5);
+		self::assertTrue($this->cache->restore(4, 4, $same, LightArrayCache::fingerprint($same)));
+		self::assertTrue($this->cache->has(4, 4));
+
+		$this->cache->drop(4, 4);
+		self::assertFalse($this->cache->has(4, 4));
+		self::assertFalse($this->cache->restore(4, 4, $same, LightArrayCache::fingerprint($same)));
+	}
+
+	public function testUnreadableCacheIsRebuilt() : void{
+		$chunk = self::chunk();
+		$chunk->setLightPopulated(true);
+		$this->cache->store(0, 0, $chunk, LightArrayCache::fingerprint($chunk));
+		$this->cache->close();
+
+		$directory = Path::join($this->path, "light_cache");
+		foreach(scandir($directory) as $file){
+			if($file !== "." && $file !== ".."){
+				unlink(Path::join($directory, $file));
+			}
+		}
+		file_put_contents(Path::join($directory, "CURRENT"), "MANIFEST-999999\n");
+
+		$this->cache = $this->open("light_cache") ?? throw new \LogicException("An unreadable cache should be rebuilt");
+		self::assertSame([\LogLevel::WARNING], $this->logger->levels);
+		self::assertFalse($this->cache->restore(0, 0, self::chunk(), LightArrayCache::fingerprint(self::chunk())));
+	}
+
+	public function testCacheThatCannotBeCreatedIsDisabled() : void{
+		file_put_contents(Path::join($this->path, "not-a-directory"), "");
+
+		self::assertNull($this->open(Path::join("not-a-directory", "light_cache")));
+		self::assertSame([\LogLevel::WARNING, \LogLevel::ERROR], $this->logger->levels);
 	}
 
 	public function testUnknownChunkIsLeftUntouched() : void{
 		$chunk = self::chunk();
-		self::assertFalse($this->cache->restore(1, 1, $chunk));
+		self::assertFalse($this->cache->restore(1, 1, $chunk, LightArrayCache::fingerprint($chunk)));
 		self::assertFalse($chunk->isLightPopulated());
 	}
 
 	public function testChunkWithoutLightDropsItsEntry() : void{
 		$chunk = self::chunk();
 		$chunk->setLightPopulated(true);
-		$this->cache->store(0, 0, $chunk);
+		$this->cache->store(0, 0, $chunk, LightArrayCache::fingerprint($chunk));
 
 		$replaced = self::chunk();
-		$this->cache->store(0, 0, $replaced);
+		$this->cache->store(0, 0, $replaced, LightArrayCache::fingerprint($replaced));
 
-		self::assertFalse($this->cache->restore(0, 0, self::chunk()));
+		self::assertFalse($this->cache->restore(0, 0, self::chunk(), LightArrayCache::fingerprint(self::chunk())));
+	}
+}
+
+final class RecordingLogger extends \SimpleLogger{
+	/** @var string[] */
+	public array $levels = [];
+
+	public function log($level, $message){
+		$this->levels[] = is_string($level) ? $level : "";
 	}
 }

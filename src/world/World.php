@@ -385,7 +385,31 @@ class World implements ChunkManager{
 
 	public WorldTimings $timings;
 
-	private LightArrayCache $lightCache;
+	private ?LightArrayCache $lightCache;
+
+	/**
+	 * Loaded chunks whose light may have changed since it was last stored in the light cache.
+	 *
+	 * @var true[]
+	 * @phpstan-var array<ChunkPosHash, true>
+	 */
+	private array $staleLightChunks = [];
+
+	/**
+	 * Fingerprint of the terrain the world provider holds for each loaded chunk that came from it or was saved to it.
+	 *
+	 * @var string[]
+	 * @phpstan-var array<ChunkPosHash, string>
+	 */
+	private array $storedTerrain = [];
+
+	/**
+	 * Unloaded chunks whose light cache entry has already been dropped, and not stored again since.
+	 *
+	 * @var true[]
+	 * @phpstan-var array<ChunkPosHash, true>
+	 */
+	private array $droppedLightChunks = [];
 
 	public float $tickRateTime = 0;
 
@@ -578,7 +602,7 @@ class World implements ChunkManager{
 		$this->initRandomTickBlocksFromConfig($cfg);
 
 		$this->timings = new WorldTimings($this);
-		$this->lightCache = new LightArrayCache(Path::join($this->provider->getPath(), "light_cache"));
+		$this->lightCache = LightArrayCache::open(Path::join($this->provider->getPath(), "light_cache"), $this->logger);
 	}
 
 	private function initRandomTickBlocksFromConfig(ServerConfigGroup $cfg) : void{
@@ -680,7 +704,7 @@ class World implements ChunkManager{
 		$this->generatorExecutor->shutdown();
 
 		$this->provider->close();
-		$this->lightCache->close();
+		$this->lightCache?->close();
 		$this->blockCache = [];
 		$this->blockCacheSize = 0;
 		$this->blockCollisionBoxCache = [];
@@ -1404,6 +1428,7 @@ class World implements ChunkManager{
 						$chunk->getSubChunk($y)->setBlockSkyLightArray($lightArray);
 					}
 					$chunk->setLightPopulated(true);
+					$this->staleLightChunks[World::chunkHash($chunkX, $chunkZ)] = true;
 					$this->markTickingChunkForRecheck($chunkX, $chunkZ);
 				}
 			));
@@ -1505,9 +1530,7 @@ class World implements ChunkManager{
 					array_map(fn(Entity $e) => $e->saveNBT(), array_values(array_filter($this->getChunkEntities($chunkX, $chunkZ), fn(Entity $e) => $e->canSaveWithChunk()))),
 					array_map(fn(Tile $t) => $t->saveNBT(), array_values($chunk->getTiles())),
 				), $this->getChunkSaveDirtyFlags($chunkHash, $chunk));
-				if($chunk->isTerrainDirty()){
-					$this->saveChunkLight($chunkX, $chunkZ, $chunk);
-				}
+				$this->saveChunkLight($chunkHash, $chunkX, $chunkZ, $chunk);
 				$chunk->clearTerrainDirtyFlags();
 			}
 		}finally{
@@ -1515,12 +1538,47 @@ class World implements ChunkManager{
 		}
 	}
 
-	private function saveChunkLight(int $chunkX, int $chunkZ, Chunk $chunk) : void{
+	/**
+	 * Stores the light of a chunk whose terrain has just been saved, unless the light cache already holds it. Blocks
+	 * that were just written are what the world provider now holds: this is when their fingerprint is taken.
+	 */
+	private function saveChunkLight(int $chunkHash, int $chunkX, int $chunkZ, Chunk $chunk) : void{
+		if($this->lightCache === null){
+			return;
+		}
 		$this->timings->syncChunkSaveLight->startTiming();
 		try{
-			$this->lightCache->store($chunkX, $chunkZ, $chunk);
+			if($chunk->getTerrainDirtyFlag(Chunk::DIRTY_FLAG_BLOCKS) || !isset($this->storedTerrain[$chunkHash])){
+				$this->storedTerrain[$chunkHash] = LightArrayCache::fingerprint($chunk);
+			}elseif(!isset($this->staleLightChunks[$chunkHash]) && ($this->lightCache->has($chunkX, $chunkZ) || $chunk->isLightPopulated() !== true)){
+				return;
+			}
+			$this->lightCache->store($chunkX, $chunkZ, $chunk, $this->storedTerrain[$chunkHash]);
+			unset($this->staleLightChunks[$chunkHash], $this->droppedLightChunks[$chunkHash]);
 		}finally{
 			$this->timings->syncChunkSaveLight->stopTiming();
+		}
+	}
+
+	/**
+	 * Called when the terrain of a chunk changes. Light spreads up to 15 blocks, so it can change in this chunk and in
+	 * the eight around it. Those that are loaded receive the light update and will be stored again; for those that
+	 * are not, the update never reaches them and what the cache holds is no longer true, so it is dropped.
+	 */
+	private function invalidateLightCacheAround(int $chunkX, int $chunkZ) : void{
+		if($this->lightCache === null){
+			return;
+		}
+		for($x = $chunkX - 1; $x <= $chunkX + 1; ++$x){
+			for($z = $chunkZ - 1; $z <= $chunkZ + 1; ++$z){
+				$chunkHash = World::chunkHash($x, $z);
+				if(isset($this->chunks[$chunkHash])){
+					$this->staleLightChunks[$chunkHash] = true;
+				}elseif(!isset($this->droppedLightChunks[$chunkHash])){
+					$this->lightCache->drop($x, $z);
+					$this->droppedLightChunks[$chunkHash] = true;
+				}
+			}
 		}
 	}
 
@@ -2165,6 +2223,7 @@ class World implements ChunkManager{
 			$this->changedBlocks[$chunkHash] = [];
 		}
 		$this->changedBlocks[$chunkHash][$relativeBlockHash] = $pos;
+		$this->invalidateLightCacheAround($chunkX, $chunkZ);
 
 		foreach($this->getChunkListeners($chunkX, $chunkZ) as $listener){
 			$listener->onBlockChanged($pos);
@@ -2758,6 +2817,7 @@ class World implements ChunkManager{
 		}
 
 		$this->chunks[$chunkHash] = $chunk;
+		$this->invalidateLightCacheAround($chunkX, $chunkZ);
 		unset($this->knownUngeneratedChunks[$chunkHash]);
 		unset($this->randomTickableSubChunks[$chunkHash]);
 
@@ -3059,12 +3119,16 @@ class World implements ChunkManager{
 			$this->logger->debug("Chunk $x $z has been upgraded, will be saved at the next autosave opportunity");
 		}
 
-		$this->timings->syncChunkLoadLight->startTiming();
-		try{
-			$this->lightCache->restore($x, $z, $chunk);
-		}finally{
-			$this->timings->syncChunkLoadLight->stopTiming();
+		if($this->lightCache !== null){
+			$this->timings->syncChunkLoadLight->startTiming();
+			try{
+				$this->storedTerrain[$chunkHash] = LightArrayCache::fingerprint($chunk);
+				$this->lightCache->restore($x, $z, $chunk, $this->storedTerrain[$chunkHash]);
+			}finally{
+				$this->timings->syncChunkLoadLight->stopTiming();
+			}
 		}
+		unset($this->droppedLightChunks[$chunkHash]);
 		$this->chunks[$chunkHash] = $chunk;
 
 		$this->blockCacheSize -= count($this->blockCache[$chunkHash] ?? []);
@@ -3334,7 +3398,7 @@ class World implements ChunkManager{
 				}finally{
 					$this->timings->syncChunkSave->stopTiming();
 				}
-				$this->saveChunkLight($x, $z, $chunk);
+				$this->saveChunkLight($chunkHash, $x, $z, $chunk);
 			}
 
 			foreach($this->getChunkListeners($x, $z) as $listener){
@@ -3349,8 +3413,9 @@ class World implements ChunkManager{
 			}
 
 			$chunk->onUnload();
-			$this->lightCache->forget($x, $z);
+			$this->lightCache?->forget($x, $z);
 		}
+		unset($this->staleLightChunks[$chunkHash], $this->storedTerrain[$chunkHash]);
 
 		unset($this->chunks[$chunkHash]);
 		unset($this->legacyDerivedStateChunks[$chunkHash]);
